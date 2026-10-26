@@ -506,33 +506,41 @@ function createMonster() {
     monster.add(eye);
   }
 
-  // TEST MODE: Spawn the monster near the player.
-const spawnDistance = 8;
-const spawnAngle = Math.random() * Math.PI * 2;
+  // TEST MODE: Spawn the monster directly in front of the player.
+  const spawnDistance = 8;
+  const direction = new THREE.Vector3();
 
-let spawnX;
-let spawnZ;
-let attempts = 0;
+  camera.getWorldDirection(direction);
 
-do {
-  const angle = spawnAngle + attempts * 0.7;
+  // Keep the spawn direction horizontal.
+  direction.y = 0;
+  direction.normalize();
 
-  spawnX = player.x + Math.cos(angle) * spawnDistance;
-  spawnZ = player.z + Math.sin(angle) * spawnDistance;
+  let spawnX = player.x + direction.x * spawnDistance;
+  let spawnZ = player.z + direction.z * spawnDistance;
 
-  attempts++;
-} while (
-  isBlocked(spawnX, spawnZ) &&
-  attempts < 12
-);
+  // If a wall blocks the spawn position, try closer positions.
+  let foundPosition = false;
 
-// Use the valid position we found.
-if (isBlocked(spawnX, spawnZ)) {
-  spawnX = player.x;
-  spawnZ = player.z + CELL;
-}
+  for (let distance = spawnDistance; distance >= 2; distance -= 1) {
+    const testX = player.x + direction.x * distance;
+    const testZ = player.z + direction.z * distance;
 
-monster.position.set(spawnX, 0, spawnZ);
+    if (!isBlocked(testX, testZ)) {
+      spawnX = testX;
+      spawnZ = testZ;
+      foundPosition = true;
+      break;
+    }
+  }
+
+  // Fallback: use a nearby position if the forward positions are blocked.
+  if (!foundPosition) {
+    spawnX = player.x;
+    spawnZ = player.z + CELL;
+  }
+
+  monster.position.set(spawnX, 0, spawnZ);
 
   scene.add(monster);
 
@@ -547,7 +555,7 @@ monster.position.set(spawnX, 0, spawnZ);
       monsterModel.scale.setScalar(1.0);
       monsterModel.position.set(0, 0, 0);
 
-      // Keep the model unchanged.
+      // Keep the original model unchanged.
       // Remove the placeholder after the model loads.
       while (monster.children.length > 0) {
         monster.remove(monster.children[0]);
