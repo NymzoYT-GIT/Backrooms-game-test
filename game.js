@@ -557,6 +557,15 @@ function startGame() {
   if (started) return;
 
   started = true;
+   if (!audioContext) {
+  audioContext = new (
+    window.AudioContext || window.webkitAudioContext
+  )();
+}
+
+if (audioContext.state === "suspended") {
+  audioContext.resume();
+}
   gameOver = false;
   won = false;
   elapsed = 0;
@@ -661,7 +670,24 @@ function updatePlayer(delta) {
   const scale = length > speed * delta ? 0.7071 : 1;
 
   movePlayer(moveX * scale, moveZ * scale);
-  updateCamera();
+updateCamera();
+
+// Play footsteps only when the player is actually moving.
+const actuallyMoving =
+  moving &&
+  (Math.abs(moveX) > 0.001 || Math.abs(moveZ) > 0.001);
+
+if (actuallyMoving && started && !gameOver && !won) {
+  const stepInterval = speed === player.sprintSpeed ? 0.30 : 0.45;
+  const now = performance.now() / 1000;
+
+  if (now >= nextFootstepTime) {
+    playFootstep();
+    nextFootstepTime = now + stepInterval;
+  }
+} else {
+  nextFootstepTime = 0;
+}
 
   const exit = scene.userData.exit;
 
