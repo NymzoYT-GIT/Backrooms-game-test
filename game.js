@@ -458,12 +458,13 @@ function movePlayer(dx, dz) {
 }
 
 /* =========================================
-   MONSTER
+   MONSTER MODEL
 ========================================= */
 
 function createMonster() {
   monster = new THREE.Group();
 
+  // Placeholder body used if the model cannot load.
   const bodyMaterial = new THREE.MeshStandardMaterial({
     color: 0x171317,
     roughness: 1
@@ -505,21 +506,36 @@ function createMonster() {
     monster.add(eye);
   }
 
-  const offset = (GRID_SIZE * CELL) / 2;
+  // TEST MODE: Spawn the monster near the player.
+const spawnDistance = 8;
+const spawnAngle = Math.random() * Math.PI * 2;
 
-  monster.position.set(
-    (GRID_SIZE - 4) * CELL -
-      offset +
-      CELL / 2,
-    0,
-    (GRID_SIZE - 4) * CELL -
-      offset +
-      CELL / 2
-  );
+let spawnX;
+let spawnZ;
+let attempts = 0;
+
+do {
+  const angle = spawnAngle + attempts * 0.7;
+
+  spawnX = player.x + Math.cos(angle) * spawnDistance;
+  spawnZ = player.z + Math.sin(angle) * spawnDistance;
+
+  attempts++;
+} while (
+  isBlocked(spawnX, spawnZ) &&
+  attempts < 12
+);
+
+// Use the valid position we found.
+if (isBlocked(spawnX, spawnZ)) {
+  spawnX = player.x;
+  spawnZ = player.z + CELL;
+}
+
+monster.position.set(spawnX, 0, spawnZ);
 
   scene.add(monster);
 
-  // Load your custom monster model.
   gltfLoader.load(
     "./assets/models/Lonely_Wanderer.glb",
 
@@ -531,7 +547,8 @@ function createMonster() {
       monsterModel.scale.setScalar(1.0);
       monsterModel.position.set(0, 0, 0);
 
-      // Remove the placeholder body and eyes.
+      // Keep the model unchanged.
+      // Remove the placeholder after the model loads.
       while (monster.children.length > 0) {
         monster.remove(monster.children[0]);
       }
@@ -550,119 +567,325 @@ function createMonster() {
   );
 }
 
+/* =========================================
+   WORLD AND GRID CONVERSION
+========================================= */
+
+function worldToGrid(x, z) {
+  const offset = (GRID_SIZE * CELL) / 2;
+
+  return {
+    x: Math.floor((x + offset) / CELL),
+    z: Math.floor((z + offset) / CELL)
+  };
+}
+
+function gridToWorld(x, z) {
+  const offset = (GRID_SIZE * CELL) / 2;
+
+  return {
+    x: x * CELL - offset + CELL / 2,
+    z: z * CELL - offset + CELL / 2
+  };
+}
+
+/* =========================================
+   A* MAZE PATHFINDING
+========================================= */
+
+function findMonsterPath(startX, startZ, goalX, goalZ) {
+  const key = (x, z) => `${x},${z}`;
+
+  const start = {
+    x: startX,
+    z: startZ
+  };
+
+  const goal = {
+    x: goalX,
+    z: goalZ
+  };
+
+  const heuristic = (a, b) =>
+    Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+
+  const open = [{
+    x: start.x,
+    z: start.z,
+    g: 0,
+    f: heuristic(start, goal)
+  }];
+
+  const cameFrom = new Map();
+  const bestCost = new Map([
+    [key(start.x, start.z), 0]
+  ]);
+
+  const closed = new Set();
+
+  const directions = [
+    { x: 0, z: -1 },
+    { x: 1, z: 0 },
+    { x: 0, z: 1 },
+    { x: -1, z: 0 }
+  ];
+
+  while (open.length > 0) {
+    // Lowest estimated total cost first.
+    open.sort((a, b) => b.f - a.f);
+
+    const current = open.pop();
+    const currentKey = key(current.x, current.z);
+
+    if (closed.has(currentKey)) continue;
+
+    closed.add(currentKey);
+
+    if (
+      current.x === goal.x &&
+      current.z === goal.z
+    ) {
+      const path = [];
+      let stepKey = currentKey;
+
+      while (stepKey) {
+        const [x, z] = stepKey.split(",").map(Number);
+
+        path.push({ x, z });
+        stepKey = cameFrom.get(stepKey);
+      }
+
+      path.reverse();
+
+      return path.map(point =>
+        gridToWorld(point.x, point.z)
+      );
+    }
+
+    for (const direction of directions) {
+      const nx = current.x + direction.x;
+      const nz = current.z + direction.z;
+
+      if (
+        nx < 0 ||
+        nz < 0 ||
+        nx >= GRID_SIZE ||
+        nz >= GRID_SIZE ||
+        maze[nz][nx] !== 0
+      ) {
+        continue;
+      }
+
+      const nextKey = key(nx, nz);
+
+      if (closed.has(nextKey)) continue;
+
+      const newCost = current.g + 1;
+      const oldCost = bestCost.get(nextKey);
+
+      if (
+        oldCost !== undefined &&
+        newCost >= oldCost
+      ) {
+        continue;
+      }
+
+      cameFrom.set(nextKey, currentKey);
+      bestCost.set(nextKey, newCost);
+
+      const next = {
+        x: nx,
+        z: nz
+      };
+
+      open.push({
+        x: nx,
+        z: nz,
+        g: newCost,
+        f: newCost + heuristic(next, goal)
+      });
+    }
+  }
+
+  // No valid route was found.
+  return [];
+}
+
+/* =========================================
+   MONSTER ROAMING AND NAVIGATION
+========================================= */
+
 function updateMonster(delta) {
   if (!monster || !started || gameOver || won) {
     return;
   }
 
-  // Initialize roaming state the first time this runs.
-  if (!monster.userData.roaming) {
-    monster.userData.roaming = true;
-    monster.userData.targetX = monster.position.x;
-    monster.userData.targetZ = monster.position.z;
-    monster.userData.turnTimer = 0;
-    monster.userData.roamSpeed = 1.6;
-    chooseMonsterDestination();
-  }
-
   const data = monster.userData;
 
-  data.turnTimer -= delta;
+  // Initialize monster AI.
+  if (!data.roaming) {
+    data.roaming = true;
+    data.roamSpeed = 1.6;
+    data.path = [];
+    data.pathIndex = 0;
+    data.repathTimer = 0;
+    data.stuckTimer = 0;
+    data.lastX = monster.position.x;
+    data.lastZ = monster.position.z;
 
-  const dx = data.targetX - monster.position.x;
-  const dz = data.targetZ - monster.position.z;
-  const distanceToTarget = Math.hypot(dx, dz);
-
-  // Pick a new destination when close to the current one.
-  if (distanceToTarget < 0.7 || data.turnTimer <= 0) {
     chooseMonsterDestination();
   }
 
-  const moveX = data.targetX - monster.position.x;
-  const moveZ = data.targetZ - monster.position.z;
-  const distance = Math.hypot(moveX, moveZ);
+  data.repathTimer -= delta;
 
-  if (distance > 0.001) {
-    const directionX = moveX / distance;
-    const directionZ = moveZ / distance;
-    const step = data.roamSpeed * delta;
+  // Detect whether the monster has stopped progressing.
+  const progress = Math.hypot(
+    monster.position.x - data.lastX,
+    monster.position.z - data.lastZ
+  );
 
-    const nextX = monster.position.x + directionX * step;
-    const nextZ = monster.position.z + directionZ * step;
-
-    // Check movement against the maze walls.
-    if (!isBlocked(nextX, monster.position.z)) {
-      monster.position.x = nextX;
-    }
-
-    if (!isBlocked(monster.position.x, nextZ)) {
-      monster.position.z = nextZ;
-    }
-
-    // Face the direction of travel.
-    monster.rotation.y = Math.atan2(directionX, directionZ);
+  if (progress > 0.02) {
+    data.stuckTimer = 0;
+    data.lastX = monster.position.x;
+    data.lastZ = monster.position.z;
+  } else {
+    data.stuckTimer += delta;
   }
 
-  // Keep track of how close the monster is to the player.
+  // Recalculate the route if movement gets stuck.
+  if (data.stuckTimer > 2.5) {
+    data.stuckTimer = 0;
+    data.lastX = monster.position.x;
+    data.lastZ = monster.position.z;
+
+    chooseMonsterDestination();
+  }
+
+  // Choose another destination when the current path ends.
+  if (
+    data.pathIndex >= data.path.length &&
+    data.repathTimer <= 0
+  ) {
+    chooseMonsterDestination();
+  }
+
+  const target = data.path[data.pathIndex];
+
+  if (target) {
+    const dx = target.x - monster.position.x;
+    const dz = target.z - monster.position.z;
+
+    const distance = Math.hypot(dx, dz);
+
+    if (distance < 0.3) {
+      data.pathIndex++;
+    } else {
+      const step = Math.min(
+        data.roamSpeed * delta,
+        distance
+      );
+
+      const directionX = dx / distance;
+      const directionZ = dz / distance;
+
+      const nextX =
+        monster.position.x + directionX * step;
+
+      const nextZ =
+        monster.position.z + directionZ * step;
+
+      // Follow the path through open maze cells.
+      // These checks provide an additional safety barrier.
+      if (!isBlocked(nextX, monster.position.z)) {
+        monster.position.x = nextX;
+      }
+
+      if (!isBlocked(monster.position.x, nextZ)) {
+        monster.position.z = nextZ;
+      }
+
+      // Face the direction of travel.
+      monster.rotation.y = Math.atan2(
+        directionX,
+        directionZ
+      );
+    }
+  }
+
+  // Track the distance between the monster and player.
   const playerDX = player.x - monster.position.x;
   const playerDZ = player.z - monster.position.z;
 
   monsterDistance = Math.hypot(playerDX, playerDZ);
 
-  // The monster can still catch the player if they get too close.
+  // Catch the player if they get too close.
   if (monsterDistance < 1.3) {
     endGame(false);
   }
 
-  if (monsterDistance < 12) {
-    monsterWarning.textContent = "IT KNOWS YOU ARE HERE";
-  } else {
-    monsterWarning.textContent = "";
-  }
+  // Existing proximity warning.
+  monsterWarning.textContent =
+    monsterDistance < 12
+      ? "IT KNOWS YOU ARE HERE"
+      : "";
 }
 
+/* =========================================
+   CHOOSE A REACHABLE ROAMING DESTINATION
+========================================= */
+
 function chooseMonsterDestination() {
-  if (!monster) return;
+  if (!monster || !maze.length) return;
 
   const data = monster.userData;
-  const offset = (GRID_SIZE * CELL) / 2;
 
-  // Find an open maze cell for the monster to walk toward.
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const gridX = 1 + Math.floor(
+  const start = worldToGrid(
+    monster.position.x,
+    monster.position.z
+  );
+
+  // Try several random open cells.
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const goalX = 1 + Math.floor(
       Math.random() * (GRID_SIZE - 2)
     );
 
-    const gridZ = 1 + Math.floor(
+    const goalZ = 1 + Math.floor(
       Math.random() * (GRID_SIZE - 2)
     );
 
-    if (maze[gridZ][gridX] !== 0) continue;
+    if (maze[goalZ][goalX] !== 0) continue;
 
-    const targetX = gridX * CELL - offset + CELL / 2;
-    const targetZ = gridZ * CELL - offset + CELL / 2;
-
-    // Avoid choosing a destination right next to the monster.
+    // Avoid destinations too close to the monster.
     if (
-      Math.hypot(
-        targetX - monster.position.x,
-        targetZ - monster.position.z
-      ) < CELL * 2
+      Math.abs(goalX - start.x) +
+      Math.abs(goalZ - start.z) < 4
     ) {
       continue;
     }
 
-    data.targetX = targetX;
-    data.targetZ = targetZ;
+    const path = findMonsterPath(
+      start.x,
+      start.z,
+      goalX,
+      goalZ
+    );
 
-    // Pause briefly before selecting another destination.
-    data.turnTimer = 4 + Math.random() * 4;
+    if (path.length > 1) {
+      data.path = path;
+      data.pathIndex = 1;
 
-    return;
+      // Wait a little before picking another route.
+      data.repathTimer = 4 + Math.random() * 4;
+
+      return;
+    }
   }
 
-  // If no suitable cell was found, try again shortly.
-  data.turnTimer = 1;
+  // Retry if no suitable destination was found.
+  data.path = [];
+  data.pathIndex = 0;
+  data.repathTimer = 1;
 }
 
 /* =========================================
@@ -672,8 +895,6 @@ function chooseMonsterDestination() {
 function playFootstep() {
   if (!audioContext) return;
 
-  // If Chrome suspended audio, request playback.
-  // A later step will play once the audio is running.
   if (audioContext.state !== "running") {
     audioContext.resume().catch(error => {
       console.warn(
@@ -688,8 +909,6 @@ function playFootstep() {
   const now = audioContext.currentTime;
   const duration = 0.11;
 
-  // Generate a short noise sound.
-  // This does not require an external audio file.
   const sampleCount = Math.max(
     1,
     Math.floor(
@@ -720,10 +939,7 @@ function playFootstep() {
   filter.type = "lowpass";
   filter.frequency.setValueAtTime(700, now);
 
-  noiseGain.gain.setValueAtTime(
-    0.0001,
-    now
-  );
+  noiseGain.gain.setValueAtTime(0.0001, now);
 
   noiseGain.gain.exponentialRampToValueAtTime(
     0.10,
@@ -742,26 +958,20 @@ function playFootstep() {
   noise.start(now);
   noise.stop(now + duration);
 
-  // Add a low thump beneath the noise.
+  // Low thump beneath the noise.
   const oscillator = audioContext.createOscillator();
   const thumpGain = audioContext.createGain();
 
   oscillator.type = "sine";
 
-  oscillator.frequency.setValueAtTime(
-    95,
-    now
-  );
+  oscillator.frequency.setValueAtTime(95, now);
 
   oscillator.frequency.exponentialRampToValueAtTime(
     42,
     now + duration
   );
 
-  thumpGain.gain.setValueAtTime(
-    0.0001,
-    now
-  );
+  thumpGain.gain.setValueAtTime(0.0001, now);
 
   thumpGain.gain.exponentialRampToValueAtTime(
     0.12,
@@ -793,7 +1003,7 @@ function startGame() {
   elapsed = 0;
   nextFootstepTime = 0;
 
-  // Initialize audio from the Start button click.
+  // Initialize audio after the Start button click.
   try {
     if (!audioContext) {
       const AudioContextClass =
@@ -834,8 +1044,7 @@ function startGame() {
 
 function onPointerLockChange() {
   pointerLocked =
-    document.pointerLockElement ===
-    renderer.domElement;
+    document.pointerLockElement === renderer.domElement;
 }
 
 function onMouseMove(event) {
@@ -980,7 +1189,6 @@ function updatePlayer(delta) {
   updateCamera();
 
   // Play footsteps only when the player actually moves.
-  // Pressing into a wall will not keep triggering sounds.
   const distanceMoved = Math.hypot(
     player.x - previousX,
     player.z - previousZ
