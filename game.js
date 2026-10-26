@@ -121,7 +121,10 @@ function initialize() {
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("pointerlockchange", onPointerLockChange);
 
-    startButton.addEventListener("click", startGame);
+    startButton.addEventListener("click", () => {
+  console.log("ENTER button clicked");
+  startGame();
+});
 
     document.getElementById("reload-button").addEventListener(
       "click",
