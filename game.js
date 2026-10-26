@@ -555,31 +555,42 @@ function updateMonster(delta) {
     return;
   }
 
-  const dx = player.x - monster.position.x;
-  const dz = player.z - monster.position.z;
+  // Initialize roaming state the first time this runs.
+  if (!monster.userData.roaming) {
+    monster.userData.roaming = true;
+    monster.userData.targetX = monster.position.x;
+    monster.userData.targetZ = monster.position.z;
+    monster.userData.turnTimer = 0;
+    monster.userData.roamSpeed = 1.6;
+    chooseMonsterDestination();
+  }
 
-  monsterDistance = Math.hypot(dx, dz);
+  const data = monster.userData;
 
-  // The monster becomes more aggressive over time.
-  const chaseSpeed = Math.min(
-    3.2 + elapsed * 0.025,
-    5.5
-  );
+  data.turnTimer -= delta;
 
-  if (monsterDistance > 0.001) {
-    const directionX = dx / monsterDistance;
-    const directionZ = dz / monsterDistance;
+  const dx = data.targetX - monster.position.x;
+  const dz = data.targetZ - monster.position.z;
+  const distanceToTarget = Math.hypot(dx, dz);
 
-    const step = chaseSpeed * delta;
+  // Pick a new destination when close to the current one.
+  if (distanceToTarget < 0.7 || data.turnTimer <= 0) {
+    chooseMonsterDestination();
+  }
 
-    const nextX =
-      monster.position.x +
-      directionX * step;
+  const moveX = data.targetX - monster.position.x;
+  const moveZ = data.targetZ - monster.position.z;
+  const distance = Math.hypot(moveX, moveZ);
 
-    const nextZ =
-      monster.position.z +
-      directionZ * step;
+  if (distance > 0.001) {
+    const directionX = moveX / distance;
+    const directionZ = moveZ / distance;
+    const step = data.roamSpeed * delta;
 
+    const nextX = monster.position.x + directionX * step;
+    const nextZ = monster.position.z + directionZ * step;
+
+    // Check movement against the maze walls.
     if (!isBlocked(nextX, monster.position.z)) {
       monster.position.x = nextX;
     }
@@ -588,22 +599,70 @@ function updateMonster(delta) {
       monster.position.z = nextZ;
     }
 
-    monster.rotation.y = Math.atan2(
-      directionX,
-      directionZ
-    );
+    // Face the direction of travel.
+    monster.rotation.y = Math.atan2(directionX, directionZ);
   }
 
+  // Keep track of how close the monster is to the player.
+  const playerDX = player.x - monster.position.x;
+  const playerDZ = player.z - monster.position.z;
+
+  monsterDistance = Math.hypot(playerDX, playerDZ);
+
+  // The monster can still catch the player if they get too close.
   if (monsterDistance < 1.3) {
     endGame(false);
   }
 
   if (monsterDistance < 12) {
-    monsterWarning.textContent =
-      "IT KNOWS YOU ARE HERE";
+    monsterWarning.textContent = "IT KNOWS YOU ARE HERE";
   } else {
     monsterWarning.textContent = "";
   }
+}
+
+function chooseMonsterDestination() {
+  if (!monster) return;
+
+  const data = monster.userData;
+  const offset = (GRID_SIZE * CELL) / 2;
+
+  // Find an open maze cell for the monster to walk toward.
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const gridX = 1 + Math.floor(
+      Math.random() * (GRID_SIZE - 2)
+    );
+
+    const gridZ = 1 + Math.floor(
+      Math.random() * (GRID_SIZE - 2)
+    );
+
+    if (maze[gridZ][gridX] !== 0) continue;
+
+    const targetX = gridX * CELL - offset + CELL / 2;
+    const targetZ = gridZ * CELL - offset + CELL / 2;
+
+    // Avoid choosing a destination right next to the monster.
+    if (
+      Math.hypot(
+        targetX - monster.position.x,
+        targetZ - monster.position.z
+      ) < CELL * 2
+    ) {
+      continue;
+    }
+
+    data.targetX = targetX;
+    data.targetZ = targetZ;
+
+    // Pause briefly before selecting another destination.
+    data.turnTimer = 4 + Math.random() * 4;
+
+    return;
+  }
+
+  // If no suitable cell was found, try again shortly.
+  data.turnTimer = 1;
 }
 
 /* =========================================
