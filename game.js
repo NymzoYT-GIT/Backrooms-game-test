@@ -45,6 +45,7 @@ let messageTimer = 0;
 const keys = {};
 let audioContext = null;
 let nextFootstepTime = 0;
+
 const velocity = new THREE.Vector3();
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
@@ -90,8 +91,15 @@ function initialize() {
       powerPreference: "low-power"
     });
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, 1.5)
+    );
+
+    renderer.setSize(
+      window.innerWidth,
+      window.innerHeight
+    );
+
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     container.appendChild(renderer.domElement);
@@ -103,6 +111,7 @@ function initialize() {
       0x252014,
       1.25
     );
+
     scene.add(ambient);
 
     const mainLight = new THREE.PointLight(
@@ -110,6 +119,7 @@ function initialize() {
       2.2,
       24
     );
+
     mainLight.position.set(0, 3.4, 0);
     scene.add(mainLight);
 
@@ -120,13 +130,17 @@ function initialize() {
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+
     document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("pointerlockchange", onPointerLockChange);
+
+    document.addEventListener(
+      "pointerlockchange",
+      onPointerLockChange
+    );
 
     startButton.addEventListener("click", () => {
-  console.log("ENTER button clicked");
-  startGame();
-});
+      startGame();
+    });
 
     document.getElementById("reload-button").addEventListener(
       "click",
@@ -149,12 +163,16 @@ function loadTexture(path, repeatX = 1, repeatY = 1) {
     undefined,
     undefined,
     () => {
-      console.warn("Texture unavailable; using fallback:", path);
+      console.warn(
+        "Texture unavailable; using fallback:",
+        path
+      );
     }
   );
 
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
+
   texture.repeat.set(repeatX, repeatY);
   texture.colorSpace = THREE.SRGBColorSpace;
 
@@ -172,6 +190,7 @@ function generateMaze() {
   );
 
   const stack = [{ x: 1, z: 1 }];
+
   maze[1][1] = 0;
 
   const directions = [
@@ -214,18 +233,34 @@ function generateMaze() {
     ] = 0;
 
     maze[nz][nx] = 0;
-    stack.push({ x: nx, z: nz });
+
+    stack.push({
+      x: nx,
+      z: nz
+    });
   }
 
   // Create an open exit area.
-  for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
-    for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
+  for (
+    let z = GRID_SIZE - 5;
+    z < GRID_SIZE - 1;
+    z++
+  ) {
+    for (
+      let x = GRID_SIZE - 5;
+      x < GRID_SIZE - 1;
+      x++
+    ) {
       maze[z][x] = 0;
     }
   }
 
   // Make a path toward the exit.
-  for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
+  for (
+    let x = GRID_SIZE - 7;
+    x < GRID_SIZE - 1;
+    x++
+  ) {
     maze[GRID_SIZE - 3][x] = 0;
   }
 }
@@ -278,7 +313,10 @@ function buildWorld() {
   });
 
   floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(worldWidth, worldWidth),
+    new THREE.PlaneGeometry(
+      worldWidth,
+      worldWidth
+    ),
     floorMaterial
   );
 
@@ -286,15 +324,20 @@ function buildWorld() {
   floor.position.y = 0;
   floor.position.x = 0;
   floor.position.z = 0;
+
   scene.add(floor);
 
   ceiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(worldWidth, worldWidth),
+    new THREE.PlaneGeometry(
+      worldWidth,
+      worldWidth
+    ),
     roofMaterial
   );
 
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = WALL_HEIGHT;
+
   scene.add(ceiling);
 
   const wallGeometry = new THREE.BoxGeometry(
@@ -337,9 +380,13 @@ function buildWorld() {
   );
 
   exit.position.set(
-    (GRID_SIZE - 2) * CELL - offset + CELL / 2,
+    (GRID_SIZE - 2) * CELL -
+      offset +
+      CELL / 2,
     1.6,
-    (GRID_SIZE - 2) * CELL - offset + CELL / 2
+    (GRID_SIZE - 2) * CELL -
+      offset +
+      CELL / 2
   );
 
   scene.add(exit);
@@ -355,6 +402,7 @@ function setPlayerStart() {
 
   player.x = CELL * 1.5 - offset;
   player.z = CELL * 1.5 - offset;
+
   player.yaw = 0;
   player.pitch = 0;
 
@@ -376,8 +424,13 @@ function updateCamera() {
 function isBlocked(x, z) {
   const offset = (GRID_SIZE * CELL) / 2;
 
-  const gridX = Math.floor((x + offset) / CELL);
-  const gridZ = Math.floor((z + offset) / CELL);
+  const gridX = Math.floor(
+    (x + offset) / CELL
+  );
+
+  const gridZ = Math.floor(
+    (z + offset) / CELL
+  );
 
   if (
     gridX < 0 ||
@@ -417,7 +470,12 @@ function createMonster() {
   });
 
   const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
+    new THREE.CapsuleGeometry(
+      0.55,
+      1.1,
+      4,
+      8
+    ),
     bodyMaterial
   );
 
@@ -430,20 +488,33 @@ function createMonster() {
 
   for (const x of [-0.2, 0.2]) {
     const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 8, 8),
+      new THREE.SphereGeometry(
+        0.075,
+        8,
+        8
+      ),
       eyeMaterial
     );
 
-    eye.position.set(x, 1.75, -0.48);
+    eye.position.set(
+      x,
+      1.75,
+      -0.48
+    );
+
     monster.add(eye);
   }
 
   const offset = (GRID_SIZE * CELL) / 2;
 
   monster.position.set(
-    (GRID_SIZE - 4) * CELL - offset + CELL / 2,
+    (GRID_SIZE - 4) * CELL -
+      offset +
+      CELL / 2,
     0,
-    (GRID_SIZE - 4) * CELL - offset + CELL / 2
+    (GRID_SIZE - 4) * CELL -
+      offset +
+      CELL / 2
   );
 
   scene.add(monster);
@@ -451,25 +522,25 @@ function createMonster() {
   // Load your custom monster model.
   gltfLoader.load(
     "./assets/models/Lonely_Wanderer.glb",
+
     gltf => {
       if (!monster) return;
 
       monsterModel = gltf.scene;
+
       monsterModel.scale.setScalar(1.0);
       monsterModel.position.set(0, 0, 0);
 
-      monster.remove(
-        monster.children.find(child => child.isMesh)
-      );
-
-      // Remove placeholder eyes and body.
+      // Remove the placeholder body and eyes.
       while (monster.children.length > 0) {
         monster.remove(monster.children[0]);
       }
 
       monster.add(monsterModel);
     },
+
     undefined,
+
     error => {
       console.warn(
         "Custom monster model unavailable; using placeholder.",
@@ -480,7 +551,9 @@ function createMonster() {
 }
 
 function updateMonster(delta) {
-  if (!monster || !started || gameOver || won) return;
+  if (!monster || !started || gameOver || won) {
+    return;
+  }
 
   const dx = player.x - monster.position.x;
   const dz = player.z - monster.position.z;
@@ -499,8 +572,13 @@ function updateMonster(delta) {
 
     const step = chaseSpeed * delta;
 
-    const nextX = monster.position.x + directionX * step;
-    const nextZ = monster.position.z + directionZ * step;
+    const nextX =
+      monster.position.x +
+      directionX * step;
+
+    const nextZ =
+      monster.position.z +
+      directionZ * step;
 
     if (!isBlocked(nextX, monster.position.z)) {
       monster.position.x = nextX;
@@ -510,7 +588,10 @@ function updateMonster(delta) {
       monster.position.z = nextZ;
     }
 
-    monster.rotation.y = Math.atan2(directionX, directionZ);
+    monster.rotation.y = Math.atan2(
+      directionX,
+      directionZ
+    );
   }
 
   if (monsterDistance < 1.3) {
@@ -518,32 +599,123 @@ function updateMonster(delta) {
   }
 
   if (monsterDistance < 12) {
-    monsterWarning.textContent = "IT KNOWS YOU ARE HERE";
+    monsterWarning.textContent =
+      "IT KNOWS YOU ARE HERE";
   } else {
     monsterWarning.textContent = "";
   }
 }
 
+/* =========================================
+   FOOTSTEP AUDIO
+========================================= */
+
 function playFootstep() {
-  if (!audioContext || audioContext.state !== "running") return;
+  if (!audioContext) return;
+
+  // If Chrome suspended audio, request playback.
+  // A later step will play once the audio is running.
+  if (audioContext.state !== "running") {
+    audioContext.resume().catch(error => {
+      console.warn(
+        "Could not resume game audio:",
+        error
+      );
+    });
+
+    return;
+  }
 
   const now = audioContext.currentTime;
-  const duration = 0.12;
+  const duration = 0.11;
 
-  // Create a short, soft footstep thump.
+  // Generate a short noise sound.
+  // This does not require an external audio file.
+  const sampleCount = Math.max(
+    1,
+    Math.floor(
+      audioContext.sampleRate * duration
+    )
+  );
+
+  const noiseBuffer = audioContext.createBuffer(
+    1,
+    sampleCount,
+    audioContext.sampleRate
+  );
+
+  const noiseData = noiseBuffer.getChannelData(0);
+
+  for (let i = 0; i < sampleCount; i++) {
+    noiseData[i] =
+      (Math.random() * 2 - 1) *
+      (1 - i / sampleCount);
+  }
+
+  const noise = audioContext.createBufferSource();
+  const filter = audioContext.createBiquadFilter();
+  const noiseGain = audioContext.createGain();
+
+  noise.buffer = noiseBuffer;
+
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(700, now);
+
+  noiseGain.gain.setValueAtTime(
+    0.0001,
+    now
+  );
+
+  noiseGain.gain.exponentialRampToValueAtTime(
+    0.10,
+    now + 0.008
+  );
+
+  noiseGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + duration
+  );
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(audioContext.destination);
+
+  noise.start(now);
+  noise.stop(now + duration);
+
+  // Add a low thump beneath the noise.
   const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
+  const thumpGain = audioContext.createGain();
 
   oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(105, now);
-  oscillator.frequency.exponentialRampToValueAtTime(48, now + duration);
 
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.16, now + 0.012);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+  oscillator.frequency.setValueAtTime(
+    95,
+    now
+  );
 
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
+  oscillator.frequency.exponentialRampToValueAtTime(
+    42,
+    now + duration
+  );
+
+  thumpGain.gain.setValueAtTime(
+    0.0001,
+    now
+  );
+
+  thumpGain.gain.exponentialRampToValueAtTime(
+    0.12,
+    now + 0.01
+  );
+
+  thumpGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + duration
+  );
+
+  oscillator.connect(thumpGain);
+  thumpGain.connect(audioContext.destination);
 
   oscillator.start(now);
   oscillator.stop(now + duration);
@@ -557,18 +729,40 @@ function startGame() {
   if (started) return;
 
   started = true;
-   if (!audioContext) {
-  audioContext = new (
-    window.AudioContext || window.webkitAudioContext
-  )();
-}
-
-if (audioContext.state === "suspended") {
-  audioContext.resume();
-}
   gameOver = false;
   won = false;
   elapsed = 0;
+  nextFootstepTime = 0;
+
+  // Initialize audio from the Start button click.
+  try {
+    if (!audioContext) {
+      const AudioContextClass =
+        window.AudioContext ||
+        window.webkitAudioContext;
+
+      if (AudioContextClass) {
+        audioContext = new AudioContextClass();
+      }
+    }
+
+    if (
+      audioContext &&
+      audioContext.state === "suspended"
+    ) {
+      audioContext.resume().catch(error => {
+        console.warn(
+          "Could not resume game audio:",
+          error
+        );
+      });
+    }
+  } catch (error) {
+    console.warn(
+      "Game audio could not be initialized:",
+      error
+    );
+  }
 
   startScreen.classList.add("hidden");
   errorScreen.classList.add("hidden");
@@ -581,11 +775,17 @@ if (audioContext.state === "suspended") {
 
 function onPointerLockChange() {
   pointerLocked =
-    document.pointerLockElement === renderer.domElement;
+    document.pointerLockElement ===
+    renderer.domElement;
 }
 
 function onMouseMove(event) {
-  if (!started || !pointerLocked || gameOver || won) {
+  if (
+    !started ||
+    !pointerLocked ||
+    gameOver ||
+    won
+  ) {
     return;
   }
 
@@ -605,16 +805,32 @@ function onKeyDown(event) {
   keys[event.code] = true;
 
   if (
-    ["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(event.code)
+    [
+      "KeyW",
+      "KeyA",
+      "KeyS",
+      "KeyD",
+      "Space"
+    ].includes(event.code)
   ) {
     event.preventDefault();
   }
 
-  if (event.code === "Escape" && started && !gameOver && !won) {
-    showMessage("Click the game to resume looking around.");
+  if (
+    event.code === "Escape" &&
+    started &&
+    !gameOver &&
+    !won
+  ) {
+    showMessage(
+      "Click the game to resume looking around."
+    );
   }
 
-  if (event.code === "KeyR" && (gameOver || won)) {
+  if (
+    event.code === "KeyR" &&
+    (gameOver || won)
+  ) {
     window.location.reload();
   }
 }
@@ -627,23 +843,36 @@ function updatePlayer(delta) {
   if (!started || gameOver || won) return;
 
   const movingForward =
-    keys.KeyW || keys.ArrowUp ? 1 :
-    keys.KeyS || keys.ArrowDown ? -1 : 0;
+    keys.KeyW || keys.ArrowUp
+      ? 1
+      : keys.KeyS || keys.ArrowDown
+        ? -1
+        : 0;
 
   const movingSideways =
-    keys.KeyD || keys.ArrowRight ? 1 :
-    keys.KeyA || keys.ArrowLeft ? -1 : 0;
+    keys.KeyD || keys.ArrowRight
+      ? 1
+      : keys.KeyA || keys.ArrowLeft
+        ? -1
+        : 0;
 
   const moving =
-    movingForward !== 0 || movingSideways !== 0;
+    movingForward !== 0 ||
+    movingSideways !== 0;
 
   const sprinting =
-    keys.ShiftLeft || keys.ShiftRight;
+    keys.ShiftLeft ||
+    keys.ShiftRight;
 
   let speed = player.speed;
 
-  if (sprinting && moving && player.stamina > 0) {
+  if (
+    sprinting &&
+    moving &&
+    player.stamina > 0
+  ) {
     speed = player.sprintSpeed;
+
     player.stamina = Math.max(
       0,
       player.stamina - 25 * delta
@@ -659,35 +888,71 @@ function updatePlayer(delta) {
   const cos = Math.cos(player.yaw);
 
   const moveX =
-    (-sin * movingForward + cos * movingSideways) *
-    speed * delta;
+    (
+      -sin * movingForward +
+      cos * movingSideways
+    ) *
+    speed *
+    delta;
 
   const moveZ =
-    (-cos * movingForward - sin * movingSideways) *
-    speed * delta;
+    (
+      -cos * movingForward -
+      sin * movingSideways
+    ) *
+    speed *
+    delta;
 
   const length = Math.hypot(moveX, moveZ);
-  const scale = length > speed * delta ? 0.7071 : 1;
 
-  movePlayer(moveX * scale, moveZ * scale);
-updateCamera();
+  const scale =
+    length > speed * delta
+      ? 0.7071
+      : 1;
 
-// Play footsteps only when the player is actually moving.
-const actuallyMoving =
-  moving &&
-  (Math.abs(moveX) > 0.001 || Math.abs(moveZ) > 0.001);
+  const previousX = player.x;
+  const previousZ = player.z;
 
-if (actuallyMoving && started && !gameOver && !won) {
-  const stepInterval = speed === player.sprintSpeed ? 0.30 : 0.45;
-  const now = performance.now() / 1000;
+  movePlayer(
+    moveX * scale,
+    moveZ * scale
+  );
 
-  if (now >= nextFootstepTime) {
-    playFootstep();
-    nextFootstepTime = now + stepInterval;
+  updateCamera();
+
+  // Play footsteps only when the player actually moves.
+  // Pressing into a wall will not keep triggering sounds.
+  const distanceMoved = Math.hypot(
+    player.x - previousX,
+    player.z - previousZ
+  );
+
+  const actuallyMoving =
+    moving &&
+    distanceMoved > 0.0005;
+
+  if (
+    actuallyMoving &&
+    started &&
+    !gameOver &&
+    !won
+  ) {
+    const stepInterval =
+      speed === player.sprintSpeed
+        ? 0.30
+        : 0.45;
+
+    const now = performance.now() / 1000;
+
+    if (now >= nextFootstepTime) {
+      playFootstep();
+
+      nextFootstepTime =
+        now + stepInterval;
+    }
+  } else {
+    nextFootstepTime = 0;
   }
-} else {
-  nextFootstepTime = 0;
-}
 
   const exit = scene.userData.exit;
 
@@ -716,11 +981,17 @@ function endGame(success) {
 
   if (success) {
     won = true;
-    showMessage("YOU ESCAPED... FOR NOW.");
+
+    showMessage(
+      "YOU ESCAPED... FOR NOW."
+    );
+
     statusText.textContent = "EXIT FOUND";
   } else {
     gameOver = true;
+
     showMessage("IT FOUND YOU.");
+
     statusText.textContent = "YOU WERE CAUGHT";
   }
 
@@ -736,13 +1007,18 @@ function endGame(success) {
     }
 
     hud.classList.add("hidden");
+
     document.exitPointerLock?.();
+
     started = false;
   }, 1800);
 }
 
 function showError(error) {
-  console.error("Backrooms initialization error:", error);
+  console.error(
+    "Backrooms initialization error:",
+    error
+  );
 
   errorMessage.textContent =
     "The game could not initialize. Reload the page and check the browser console for the first error.";
@@ -757,7 +1033,9 @@ function showError(error) {
 function onResize() {
   if (!camera || !renderer) return;
 
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect =
+    window.innerWidth / window.innerHeight;
+
   camera.updateProjectionMatrix();
 
   renderer.setSize(
@@ -771,10 +1049,14 @@ function animate() {
 
   if (!renderer || !scene || !camera) return;
 
-  const delta = Math.min(clock.getDelta(), 0.05);
+  const delta = Math.min(
+    clock.getDelta(),
+    0.05
+  );
 
   if (started && !gameOver && !won) {
     elapsed += delta;
+
     updatePlayer(delta);
     updateMonster(delta);
 
