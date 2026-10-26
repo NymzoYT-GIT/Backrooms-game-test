@@ -43,6 +43,8 @@ let monsterDistance = 100;
 let messageTimer = 0;
 
 const keys = {};
+let audioContext = null;
+let nextFootstepTime = 0;
 const velocity = new THREE.Vector3();
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
@@ -520,6 +522,31 @@ function updateMonster(delta) {
   } else {
     monsterWarning.textContent = "";
   }
+}
+
+function playFootstep() {
+  if (!audioContext || audioContext.state !== "running") return;
+
+  const now = audioContext.currentTime;
+  const duration = 0.12;
+
+  // Create a short, soft footstep thump.
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(105, now);
+  oscillator.frequency.exponentialRampToValueAtTime(48, now + duration);
+
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.16, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+
+  oscillator.start(now);
+  oscillator.stop(now + duration);
 }
 
 /* =========================================
