@@ -56,5 +56,92 @@
     </p>
     <button id="reload-button">RELOAD GAME</button>
   </div>
+<!-- INVENTORY OVERLAY -->
+<div id="inventory-overlay" class="inventory-overlay hidden">
+  <div class="inventory-window">
+    <div class="inventory-header">
+      <div>
+        <div class="inventory-eyebrow">PLAYER EQUIPMENT</div>
+        <h2>INVENTORY</h2>
+      </div>
+
+      <button
+        id="inventory-close"
+        class="inventory-close"
+        type="button"
+        aria-label="Close inventory"
+      >×</button>
+    </div>
+
+    <div class="inventory-divider"></div>
+
+    <div class="inventory-grid" id="inventory-grid">
+      <button class="inventory-slot" data-inventory-slot="0" type="button">
+        <span class="slot-number">01</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="1" type="button">
+        <span class="slot-number">02</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="2" type="button">
+        <span class="slot-number">03</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="3" type="button">
+        <span class="slot-number">04</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="4" type="button">
+        <span class="slot-number">05</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="5" type="button">
+        <span class="slot-number">06</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="6" type="button">
+        <span class="slot-number">07</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="7" type="button">
+        <span class="slot-number">08</span>
+      </button>
+      <button class="inventory-slot" data-inventory-slot="8" type="button">
+        <span class="slot-number">09</span>
+      </button>
+    </div>
+
+    <div class="inventory-footer">
+      <span>PRESS <kbd>E</kbd> TO CLOSE</span>
+      <span>9 STORAGE SLOTS</span>
+    </div>
+  </div>
+</div>
+
+<!-- PERMANENT THREE-SLOT HOTBAR -->
+<div id="hotbar" class="hotbar">
+  <div class="hotbar-label">QUICK ACCESS</div>
+
+  <button
+    class="hotbar-slot selected"
+    data-hotbar-slot="0"
+    type="button"
+    aria-label="Hotbar slot 1"
+  >
+    <span class="hotbar-number">1</span>
+  </button>
+
+  <button
+    class="hotbar-slot"
+    data-hotbar-slot="1"
+    type="button"
+    aria-label="Hotbar slot 2"
+  >
+    <span class="hotbar-number">2</span>
+  </button>
+
+  <button
+    class="hotbar-slot"
+    data-hotbar-slot="2"
+    type="button"
+    aria-label="Hotbar slot 3"
+  >
+    <span class="hotbar-number">3</span>
+  </button>
+</div>
 </body>
 </html>
