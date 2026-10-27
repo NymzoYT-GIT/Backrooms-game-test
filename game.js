@@ -84,12 +84,9 @@ const textureLoader = new THREE.TextureLoader();
 const gltfLoader = new GLTFLoader();
 
 const monsterClips = {
-  idle: "Spell_Simple_Idle",
-  walk: "Walk",
-  run: "Run_Anime",
-  jump: "Jump_air",
-  land: "Jump_Land",
-  attack: "OverhandThrow"
+  idle: "Idle_A",
+  walk: "Zombie_Walk",
+  run: "Run_Stealth"
 };
 
 /* =========================================
@@ -534,31 +531,7 @@ function movePlayer(dx, dz) {
 function createMonster() {
   monster = new THREE.Group();
 
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
-    new THREE.MeshStandardMaterial({
-      color: 0x171317,
-      roughness: 1
-    })
-  );
-
-  body.position.y = 1.25;
-  monster.add(body);
-
-  const eyeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff0000
-  });
-
-  for (const x of [-0.2, 0.2]) {
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 8, 8),
-      eyeMaterial
-    );
-
-    eye.position.set(x, 1.75, -0.48);
-    monster.add(eye);
-  }
-
+  // Find a suitable spawn position.
   let spawnX = player.x;
   let spawnZ = player.z;
   let foundSpawn = false;
@@ -571,7 +544,13 @@ function createMonster() {
   ];
 
   for (const candidate of spawnCandidates) {
-    if (canOccupyPosition(candidate.x, candidate.z, MONSTER_RADIUS)) {
+    if (
+      canOccupyPosition(
+        candidate.x,
+        candidate.z,
+        MONSTER_RADIUS
+      )
+    ) {
       spawnX = candidate.x;
       spawnZ = candidate.z;
       foundSpawn = true;
@@ -584,23 +563,29 @@ function createMonster() {
 
     for (let z = 1; z < GRID_SIZE - 1; z++) {
       for (let x = 1; x < GRID_SIZE - 1; x++) {
-        if (maze[z][x] === 0) {
-          const position = gridToWorld(x, z);
+        if (maze[z][x] !== 0) continue;
 
-          if (
-            Math.hypot(position.x - player.x, position.z - player.z) > CELL * 2 &&
-            canOccupyPosition(position.x, position.z, MONSTER_RADIUS)
-          ) {
-            openCells.push(position);
-          }
+        const position = gridToWorld(x, z);
+
+        if (
+          Math.hypot(
+            position.x - player.x,
+            position.z - player.z
+          ) > CELL * 2 &&
+          canOccupyPosition(
+            position.x,
+            position.z,
+            MONSTER_RADIUS
+          )
+        ) {
+          openCells.push(position);
         }
       }
     }
 
     if (openCells.length > 0) {
-      const position = openCells[
-        Math.floor(Math.random() * openCells.length)
-      ];
+      const position =
+        openCells[Math.floor(Math.random() * openCells.length)];
 
       spawnX = position.x;
       spawnZ = position.z;
@@ -610,8 +595,10 @@ function createMonster() {
   monster.position.set(spawnX, 0, spawnZ);
   scene.add(monster);
 
+  // Load the actual creature model.
   gltfLoader.load(
     "./assets/models/Lonely_Wanderer.glb",
+
     gltf => {
       if (!monster) return;
 
@@ -621,22 +608,74 @@ function createMonster() {
       );
 
       monsterModel = gltf.scene;
-      monsterModel.scale.setScalar(1);
-      monsterModel.position.set(0, 0, 0);
 
+      // Measure the model before scaling it.
+      monsterModel.updateMatrixWorld(true);
+
+      const originalBounds = new THREE.Box3().setFromObject(
+        monsterModel
+      );
+
+      const originalSize = new THREE.Vector3();
+      originalBounds.getSize(originalSize);
+
+      console.log("Original monster dimensions:", originalSize);
+
+      // Scale the model to a consistent height.
+      if (originalSize.y > 0) {
+        const targetHeight = 2.7;
+        const scale = targetHeight / originalSize.y;
+
+        monsterModel.scale.setScalar(scale);
+      }
+
+      monsterModel.updateMatrixWorld(true);
+
+      // Center the model and put its lowest point on the floor.
+      const bounds = new THREE.Box3().setFromObject(monsterModel);
+      const center = new THREE.Vector3();
+
+      bounds.getCenter(center);
+
+      monsterModel.position.x -= center.x;
+      monsterModel.position.z -= center.z;
+      monsterModel.position.y -= bounds.min.y;
+
+      // Remove any previous children, including the old placeholder.
       while (monster.children.length > 0) {
         monster.remove(monster.children[0]);
       }
 
       monster.add(monsterModel);
 
+      // Set up animations.
       monsterMixer = new THREE.AnimationMixer(monsterModel);
       monsterAnimations = {};
+      currentMonsterAnimation = null;
 
       for (const clip of gltf.animations) {
         monsterAnimations[clip.name] = clip;
       }
 
+      // Start with the requested idle animation.
+      if (monsterAnimations["Idle_A"]) {
+        playMonsterAnimation("Idle_A");
+      } else if (gltf.animations.length > 0) {
+        playMonsterAnimation(gltf.animations[0].name);
+      } else {
+        console.warn("The monster model has no animation clips.");
+      }
+
+      console.log("Monster model loaded successfully.");
+    },
+
+    undefined,
+
+    error => {
+      console.error("Could not load Lonely_Wanderer.glb:", error);
+    }
+  );
+}
       playMonsterAnimation(monsterClips.idle);
 
       if (!currentMonsterAnimation && gltf.animations.length > 0) {
