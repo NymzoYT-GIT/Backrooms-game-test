@@ -597,7 +597,7 @@ function createMonster() {
 
   // Load the actual creature model.
   gltfLoader.load(
-    "./assets/models/Lonely_Wanderer.glb",
+    "./assets/models/Lonely_Wanderer.glb?v=2",
 
     gltf => {
       if (!monster) return;
