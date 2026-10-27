@@ -476,12 +476,7 @@ function createMonster() {
   });
 
   const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(
-      0.55,
-      1.1,
-      4,
-      8
-    ),
+    new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
     bodyMaterial
   );
 
@@ -494,39 +489,34 @@ function createMonster() {
 
   for (const x of [-0.2, 0.2]) {
     const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(
-        0.075,
-        8,
-        8
-      ),
+      new THREE.SphereGeometry(0.075, 8, 8),
       eyeMaterial
     );
 
-    eye.position.set(
-      x,
-      1.75,
-      -0.48
-    );
-
+    eye.position.set(x, 1.75, -0.48);
     monster.add(eye);
   }
 
-  // TEST MODE: Spawn the monster directly in front of the player.
+  // TEST MODE: Spawn the monster in front of the player.
   const spawnDistance = 8;
   const direction = new THREE.Vector3();
 
   camera.getWorldDirection(direction);
 
-  // Keep the spawn direction horizontal.
+  // Use the horizontal viewing direction.
   direction.y = 0;
-  direction.normalize();
 
-  let spawnX = player.x + direction.x * spawnDistance;
-  let spawnZ = player.z + direction.z * spawnDistance;
+  if (direction.lengthSq() > 0) {
+    direction.normalize();
+  } else {
+    direction.set(0, 0, -1);
+  }
 
-  // If a wall blocks the spawn position, try closer positions.
+  let spawnX = player.x;
+  let spawnZ = player.z - spawnDistance;
   let foundPosition = false;
 
+  // Find an open position in front of the player.
   for (let distance = spawnDistance; distance >= 2; distance -= 1) {
     const testX = player.x + direction.x * distance;
     const testZ = player.z + direction.z * distance;
@@ -539,121 +529,106 @@ function createMonster() {
     }
   }
 
-  // Fallback: use a nearby position if the forward positions are blocked.
+  // Fallback if the forward positions are blocked.
   if (!foundPosition) {
-    spawnX = player.x;
-    spawnZ = player.z + CELL;
+    const fallbackPositions = [
+      { x: player.x + CELL, z: player.z },
+      { x: player.x - CELL, z: player.z },
+      { x: player.x, z: player.z + CELL },
+      { x: player.x, z: player.z - CELL }
+    ];
+
+    for (const position of fallbackPositions) {
+      if (!isBlocked(position.x, position.z)) {
+        spawnX = position.x;
+        spawnZ = position.z;
+        foundPosition = true;
+        break;
+      }
+    }
   }
 
   monster.position.set(spawnX, 0, spawnZ);
-
   scene.add(monster);
 
+  // Load the custom monster model.
   gltfLoader.load(
     "./assets/models/Lonely_Wanderer.glb",
 
- gltf => {
-  if (!monster) return;
+    // SUCCESS: The model loaded.
+    gltf => {
+      if (!monster) return;
 
-  console.log("Monster GLB loaded successfully.");
-  console.log(
-    "Available animations:",
-    gltf.animations.map(clip => clip.name)
-  );
+      console.log("Monster GLB loaded successfully.");
+      console.log(
+        "Available animations:",
+        gltf.animations.map(clip => clip.name)
+      );
 
-  monsterModel = gltf.scene;
-  monsterModel.scale.setScalar(1.0);
-  monsterModel.position.set(0, 0, 0);
+      monsterModel = gltf.scene;
+      monsterModel.scale.setScalar(1.0);
+      monsterModel.position.set(0, 0, 0);
 
-  // Remove the placeholder.
-  while (monster.children.length > 0) {
-    monster.remove(monster.children[0]);
-  }
+      // Remove the placeholder.
+      while (monster.children.length > 0) {
+        monster.remove(monster.children[0]);
+      }
 
-  monster.add(monsterModel);
+      monster.add(monsterModel);
 
-  // Create the animation mixer.
-  monsterMixer = new THREE.AnimationMixer(monsterModel);
-  monsterAnimations = {};
+      // Create the animation mixer.
+      monsterMixer = new THREE.AnimationMixer(monsterModel);
+      monsterAnimations = {};
 
-  // Register the available animations.
-  for (const clip of gltf.animations) {
-    monsterAnimations[clip.name] = clip;
-    console.log("Registered animation:", clip.name);
-  }
+      // Register all available animations.
+      for (const clip of gltf.animations) {
+        monsterAnimations[clip.name] = clip;
+        console.log("Registered animation:", clip.name);
+      }
 
-  // Start the idle animation.
-  const idleClip = monsterAnimations["Spell_Simple_Idle"];
+      // Choose the idle animation first.
+      const idleClip = monsterAnimations["Spell_Simple_Idle"];
 
-  if (idleClip) {
-    currentMonsterAnimation = monsterMixer.clipAction(idleClip);
-  } else if (gltf.animations.length > 0) {
-    currentMonsterAnimation = monsterMixer.clipAction(
-      gltf.animations[0]
-    );
-  } else {
-    console.error("No animation clips found in the monster model.");
-    return;
-  }
+      if (idleClip) {
+        currentMonsterAnimation = monsterMixer.clipAction(idleClip);
+      } else if (gltf.animations.length > 0) {
+        // Use the first animation if idle is unavailable.
+        currentMonsterAnimation = monsterMixer.clipAction(
+          gltf.animations[0]
+        );
+      } else {
+        console.error(
+          "The monster model contains no animation clips."
+        );
+        return;
+      }
 
-  currentMonsterAnimation.reset();
-  currentMonsterAnimation.play();
+      // Start and loop the selected animation.
+      currentMonsterAnimation.reset();
+      currentMonsterAnimation.setLoop(THREE.LoopRepeat, Infinity);
+      currentMonsterAnimation.play();
 
-  console.log("Monster animation started.");
-},
+      console.log("Monster animation started.");
+      console.log("Monster mixer:", monsterMixer);
+      console.log("Current animation:", currentMonsterAnimation);
+      console.log(
+        "Animation running:",
+        currentMonsterAnimation.isRunning()
+      );
+    },
 
-  monster.add(monsterModel);
-
-  // Set up the animation system.
-  monsterMixer = new THREE.AnimationMixer(monsterModel);
-  monsterAnimations = {};
-
-  for (const clip of gltf.animations) {
-    monsterAnimations[clip.name] = clip;
-    console.log("Monster animation found:", clip.name);
-  }
-
-  // Start with the idle animation.
-  if (monsterAnimations["Spell_Simple_Idle"]) {
-    currentMonsterAnimation = monsterMixer.clipAction(
-      monsterAnimations["Spell_Simple_Idle"]
-    );
-
-    currentMonsterAnimation.play();
-  } else if (gltf.animations.length > 0) {
-    currentMonsterAnimation = monsterMixer.clipAction(
-      gltf.animations[0]
-    );
-
-    currentMonsterAnimation.play();
-  }
-
-  console.log(
-    "Monster model loaded. Animation clips:",
-    gltf.animations.map(clip => clip.name)
-  );
-},
-
-console.log("Monster mixer:", monsterMixer);
-console.log("Current animation:", currentMonsterAnimation);
-console.log(
-  "Animation running:",
-  currentMonsterAnimation
-    ? currentMonsterAnimation.isRunning()
-    : "No animation selected"
-);
-
+    // Loading progress callback.
     undefined,
 
+    // ERROR: The model failed to load.
     error => {
-      console.warn(
-        "Custom monster model unavailable; using placeholder.",
+      console.error(
+        "Custom monster model failed to load; using placeholder.",
         error
       );
     }
   );
 }
-
 /* =========================================
    WORLD AND GRID CONVERSION
 ========================================= */
