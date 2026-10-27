@@ -796,29 +796,273 @@ function chooseMonsterDestination() {
 }
 
 /* =========================================
-   MONSTER AI
+   MONSTER BEHAVIOR AI
 ========================================= */
 
-function updateMonster(delta) {
-  if (!monster || !started || gameOver || won) return;
+const MONSTER_STATE = {
+  PATROL: "PATROL",
+  INVESTIGATE: "INVESTIGATE",
+  CHASE: "CHASE",
+  SEARCH: "SEARCH",
+  RETURN: "RETURN"
+};
+
+const MONSTER_AI = {
+  patrolSpeed: 1.6,
+  investigateSpeed: 2.2,
+  chaseSpeed: 3.8,
+  searchSpeed: 1.9,
+
+  sightDistance: 13,
+  sightAngle: Math.PI * 0.32,
+
+  hearingDistance: 10,
+  sprintHearingDistance: 19,
+
+  loseSightTime: 3.5,
+  searchDuration: 8,
+  investigationDuration: 6,
+
+  catchDistance: 1.3
+};
+
+function initializeMonsterAI() {
+  if (!monster) return;
 
   const data = monster.userData;
 
-  if (!data.initialized) {
-    data.initialized = true;
-    data.roamSpeed = 1.6;
-    data.path = [];
-    data.pathIndex = 0;
-    data.repathTimer = 0;
-    data.stuckTimer = 0;
-    data.lastX = monster.position.x;
-    data.lastZ = monster.position.z;
+  data.aiInitialized = true;
+  data.state = MONSTER_STATE.PATROL;
 
+  data.path = [];
+  data.pathIndex = 0;
+
+  data.repathTimer = 0;
+  data.stateTimer = 0;
+  data.lostSightTimer = 0;
+
+  data.lastKnownPlayer = null;
+  data.investigationTarget = null;
+
+  data.lastPlayerX = player.x;
+  data.lastPlayerZ = player.z;
+
+  data.lastX = monster.position.x;
+  data.lastZ = monster.position.z;
+
+  data.stuckTimer = 0;
+
+  chooseMonsterDestination();
+
+  console.log("Monster AI initialized:", data.state);
+}
+
+function setMonsterState(newState) {
+  if (!monster) return;
+
+  const data = monster.userData;
+
+  if (data.state === newState) return;
+
+  console.log(
+    "Monster behavior:",
+    data.state,
+    "->",
+    newState
+  );
+
+  data.state = newState;
+  data.stateTimer = 0;
+  data.repathTimer = 0;
+
+  if (newState === MONSTER_STATE.PATROL) {
+    data.lastKnownPlayer = null;
+    data.investigationTarget = null;
     chooseMonsterDestination();
   }
 
+  if (newState === MONSTER_STATE.SEARCH) {
+    data.path = [];
+    data.pathIndex = 0;
+  }
+}
+
+function canMonsterSeePlayer() {
+  if (!monster || !camera) return false;
+
+  const dx = player.x - monster.position.x;
+  const dz = player.z - monster.position.z;
+
+  const distance = Math.hypot(dx, dz);
+
+  if (distance > MONSTER_AI.sightDistance) {
+    return false;
+  }
+
+  // A nearby player can be seen without precise facing.
+  if (distance < 2.5) {
+    return true;
+  }
+
+  // Check whether the player is in front of the monster.
+  const facingX = Math.sin(monster.rotation.y);
+  const facingZ = Math.cos(monster.rotation.y);
+
+  const directionX = dx / distance;
+  const directionZ = dz / distance;
+
+  const dot =
+    facingX * directionX +
+    facingZ * directionZ;
+
+  if (dot < Math.cos(MONSTER_AI.sightAngle)) {
+    return false;
+  }
+
+  // Raycast against walls to prevent seeing through them.
+  const start = monster.position.clone();
+  start.y = 1.6;
+
+  const end = new THREE.Vector3(
+    player.x,
+    PLAYER_HEIGHT,
+    player.z
+  );
+
+  const direction = end.clone().sub(start);
+  const rayDistance = direction.length();
+
+  direction.normalize();
+
+  const raycaster = new THREE.Raycaster(
+    start,
+    direction,
+    0,
+    rayDistance
+  );
+
+  const hits = raycaster.intersectObjects(walls, false);
+
+  return hits.length === 0;
+}
+
+function notifyMonsterOfNoise(x, z, intensity = 1) {
+  if (!monster || !monster.userData.aiInitialized) {
+    return;
+  }
+
+  const data = monster.userData;
+
+  const distance = Math.hypot(
+    x - monster.position.x,
+    z - monster.position.z
+  );
+
+  const hearingRange =
+    MONSTER_AI.hearingDistance * intensity;
+
+  if (distance > hearingRange) {
+    return;
+  }
+
+  // The monster does not stop chasing because of a noise.
+  if (data.state === MONSTER_STATE.CHASE) {
+    return;
+  }
+
+  data.investigationTarget = {
+    x,
+    z
+  };
+
+  data.stateTimer = 0;
+
+  setMonsterState(MONSTER_STATE.INVESTIGATE);
+  setMonsterDestination(x, z);
+}
+
+function setMonsterDestination(x, z) {
+  if (!monster) return;
+
+  const data = monster.userData;
+
+  const start = worldToGrid(
+    monster.position.x,
+    monster.position.z
+  );
+
+  const goal = worldToGrid(x, z);
+
+  if (
+    goal.x < 0 ||
+    goal.z < 0 ||
+    goal.x >= GRID_SIZE ||
+    goal.z >= GRID_SIZE
+  ) {
+    return;
+  }
+
+  // If the requested destination is a wall,
+  // find a nearby open cell.
+  if (maze[goal.z][goal.x] !== 0) {
+    let found = false;
+
+    for (let radius = 1; radius <= 4 && !found; radius++) {
+      for (let dz = -radius; dz <= radius && !found; dz++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const gx = goal.x + dx;
+          const gz = goal.z + dz;
+
+          if (
+            gx >= 0 &&
+            gz >= 0 &&
+            gx < GRID_SIZE &&
+            gz < GRID_SIZE &&
+            maze[gz][gx] === 0
+          ) {
+            goal.x = gx;
+            goal.z = gz;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!found) return;
+  }
+
+  const path = findMonsterPath(
+    start.x,
+    start.z,
+    goal.x,
+    goal.z
+  );
+
+  if (path.length > 0) {
+    data.path = path;
+    data.pathIndex = path.length > 1 ? 1 : 0;
+  } else {
+    data.path = [];
+    data.pathIndex = 0;
+  }
+}
+
+function updateMonster(delta) {
+  if (!monster || !started || gameOver || won) {
+    return;
+  }
+
+  const data = monster.userData;
+
+  if (!data.aiInitialized) {
+    initializeMonsterAI();
+  }
+
+  data.stateTimer += delta;
   data.repathTimer -= delta;
 
+  // Detect whether the monster has stopped moving.
   const progress = Math.hypot(
     monster.position.x - data.lastX,
     monster.position.z - data.lastZ
@@ -832,18 +1076,143 @@ function updateMonster(delta) {
     data.stuckTimer += delta;
   }
 
-  if (data.stuckTimer > 2.5) {
+  if (data.stuckTimer > 3) {
     data.stuckTimer = 0;
-    chooseMonsterDestination();
+    data.repathTimer = 0;
+
+    if (
+      data.state === MONSTER_STATE.CHASE ||
+      data.state === MONSTER_STATE.INVESTIGATE
+    ) {
+      setMonsterDestination(
+        data.lastKnownPlayer?.x ?? player.x,
+        data.lastKnownPlayer?.z ?? player.z
+      );
+    } else {
+      chooseMonsterDestination();
+    }
   }
 
-  if (
-    data.pathIndex >= data.path.length &&
-    data.repathTimer <= 0
-  ) {
-    chooseMonsterDestination();
+  const seesPlayer = canMonsterSeePlayer();
+
+  // Remember the player's last visible position.
+  if (seesPlayer) {
+    data.lastKnownPlayer = {
+      x: player.x,
+      z: player.z
+    };
+
+    data.lostSightTimer = 0;
+
+    if (data.state !== MONSTER_STATE.CHASE) {
+      setMonsterState(MONSTER_STATE.CHASE);
+    }
+  } else if (data.state === MONSTER_STATE.CHASE) {
+    data.lostSightTimer += delta;
+
+    if (data.lostSightTimer >= MONSTER_AI.loseSightTime) {
+      setMonsterState(MONSTER_STATE.SEARCH);
+    }
   }
 
+  // Choose behavior based on the current state.
+  switch (data.state) {
+    case MONSTER_STATE.PATROL: {
+      if (
+        data.pathIndex >= data.path.length &&
+        data.repathTimer <= 0
+      ) {
+        chooseMonsterDestination();
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.INVESTIGATE: {
+      if (data.investigationTarget) {
+        if (
+          data.pathIndex >= data.path.length &&
+          data.repathTimer <= 0
+        ) {
+          setMonsterDestination(
+            data.investigationTarget.x,
+            data.investigationTarget.z
+          );
+        }
+
+        if (
+          Math.hypot(
+            monster.position.x - data.investigationTarget.x,
+            monster.position.z - data.investigationTarget.z
+          ) < 1.5
+        ) {
+          setMonsterState(MONSTER_STATE.SEARCH);
+        }
+      }
+
+      if (
+        data.stateTimer >
+        MONSTER_AI.investigationDuration
+      ) {
+        setMonsterState(MONSTER_STATE.RETURN);
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.CHASE: {
+      // Update the route toward the latest known position.
+      if (data.repathTimer <= 0) {
+        setMonsterDestination(player.x, player.z);
+        data.repathTimer = 0.6;
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.SEARCH: {
+      if (data.stateTimer >= MONSTER_AI.searchDuration) {
+        setMonsterState(MONSTER_STATE.RETURN);
+        break;
+      }
+
+      // Search around the last known position.
+      if (
+        data.pathIndex >= data.path.length &&
+        data.repathTimer <= 0
+      ) {
+        const center = data.lastKnownPlayer || {
+          x: monster.position.x,
+          z: monster.position.z
+        };
+
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 2 + Math.random() * 5;
+
+        setMonsterDestination(
+          center.x + Math.cos(angle) * radius,
+          center.z + Math.sin(angle) * radius
+        );
+
+        data.repathTimer = 1.5;
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.RETURN: {
+      if (
+        data.pathIndex >= data.path.length &&
+        data.repathTimer <= 0
+      ) {
+        setMonsterState(MONSTER_STATE.PATROL);
+      }
+
+      break;
+    }
+  }
+
+  // Move the monster along its calculated path.
   const target = data.path[data.pathIndex];
 
   let moving = false;
@@ -851,6 +1220,7 @@ function updateMonster(delta) {
   if (target) {
     const dx = target.x - monster.position.x;
     const dz = target.z - monster.position.z;
+
     const distance = Math.hypot(dx, dz);
 
     if (distance < 0.3) {
@@ -858,19 +1228,25 @@ function updateMonster(delta) {
     } else {
       moving = true;
 
-      const step = Math.min(
-        data.roamSpeed * delta,
-        distance
-      );
+      let speed = MONSTER_AI.patrolSpeed;
 
-      const directionX = dx / distance;
-      const directionZ = dz / distance;
+      if (data.state === MONSTER_STATE.INVESTIGATE) {
+        speed = MONSTER_AI.investigateSpeed;
+      } else if (data.state === MONSTER_STATE.CHASE) {
+        speed = MONSTER_AI.chaseSpeed;
+      } else if (data.state === MONSTER_STATE.SEARCH) {
+        speed = MONSTER_AI.searchSpeed;
+      } else if (data.state === MONSTER_STATE.RETURN) {
+        speed = MONSTER_AI.patrolSpeed;
+      }
 
-      const nextX =
-        monster.position.x + directionX * step;
+      const step = Math.min(speed * delta, distance);
 
-      const nextZ =
-        monster.position.z + directionZ * step;
+      const dirX = dx / distance;
+      const dirZ = dz / distance;
+
+      const nextX = monster.position.x + dirX * step;
+      const nextZ = monster.position.z + dirZ * step;
 
       if (!isBlocked(nextX, monster.position.z)) {
         monster.position.x = nextX;
@@ -880,33 +1256,41 @@ function updateMonster(delta) {
         monster.position.z = nextZ;
       }
 
-      monster.rotation.y = Math.atan2(
-        directionX,
-        directionZ
-      );
+      // Turn toward the direction of travel.
+      monster.rotation.y = Math.atan2(dirX, dirZ);
     }
   }
 
+  // Select animation to match the behavior.
   if (monsterMixer) {
-    playMonsterAnimation(
-      moving ? monsterClips.walk : monsterClips.idle
-    );
+    if (data.state === MONSTER_STATE.CHASE && moving) {
+      playMonsterAnimation(monsterClips.run);
+    } else if (moving) {
+      playMonsterAnimation(monsterClips.walk);
+    } else {
+      playMonsterAnimation(monsterClips.idle);
+    }
   }
 
-  const dx = player.x - monster.position.x;
-  const dz = player.z - monster.position.z;
+  monsterDistance = Math.hypot(
+    player.x - monster.position.x,
+    player.z - monster.position.z
+  );
 
-  monsterDistance = Math.hypot(dx, dz);
-
-  if (monsterDistance < 1.3) {
+  if (monsterDistance < MONSTER_AI.catchDistance) {
     endGame(false);
   }
 
   if (monsterWarning) {
-    monsterWarning.textContent =
-      monsterDistance < 12
-        ? "IT KNOWS YOU ARE HERE"
-        : "";
+    if (data.state === MONSTER_STATE.CHASE) {
+      monsterWarning.textContent = "IT FOUND YOU. RUN!";
+    } else if (data.state === MONSTER_STATE.INVESTIGATE) {
+      monsterWarning.textContent = "SOMETHING HEARD YOU...";
+    } else if (monsterDistance < 12) {
+      monsterWarning.textContent = "IT IS NEARBY";
+    } else {
+      monsterWarning.textContent = "";
+    }
   }
 }
 
@@ -1208,10 +1592,20 @@ function updatePlayer(delta) {
 
     const now = performance.now() / 1000;
 
-    if (now >= nextFootstepTime) {
-      playFootstep();
-      nextFootstepTime = now + stepInterval;
-    }
+   if (now >= nextFootstepTime) {
+  playFootstep();
+
+  const noiseIntensity =
+    speed === player.sprintSpeed ? 1.9 : 1.0;
+
+  notifyMonsterOfNoise(
+    player.x,
+    player.z,
+    noiseIntensity
+  );
+
+  nextFootstepTime = now + stepInterval;
+}
   } else {
     nextFootstepTime = 0;
   }
