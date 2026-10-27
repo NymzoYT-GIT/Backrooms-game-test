@@ -634,6 +634,15 @@ function createMonster() {
   );
 },
 
+console.log("Monster mixer:", monsterMixer);
+console.log("Current animation:", currentMonsterAnimation);
+console.log(
+  "Animation running:",
+  currentMonsterAnimation
+    ? currentMonsterAnimation.isRunning()
+    : "No animation selected"
+);
+
     undefined,
 
     error => {
