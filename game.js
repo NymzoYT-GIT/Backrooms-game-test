@@ -14,17 +14,17 @@ const monsterWarning = document.getElementById("monster-warning");
 const messageText = document.getElementById("message");
 const errorScreen = document.getElementById("error-screen");
 const errorMessage = document.getElementById("error-message");
+const reloadButton = document.getElementById("reload-button");
 
 const CELL = 5;
 const GRID_SIZE = 31;
 const WALL_HEIGHT = 4;
 const PLAYER_HEIGHT = 1.7;
-const PLAYER_RADIUS = 0.35;
 
-let scene;
-let camera;
-let renderer;
-let clock;
+let scene = null;
+let camera = null;
+let renderer = null;
+let clock = null;
 
 let started = false;
 let gameOver = false;
@@ -33,22 +33,22 @@ let pointerLocked = false;
 
 let maze = [];
 let walls = [];
-let floor;
-let ceiling;
-let monster;
-let monsterModel;
+let monster = null;
+let monsterModel = null;
+
+let monsterMixer = null;
+let monsterAnimations = {};
+let currentMonsterAnimation = null;
+let previousMonsterAnimation = null;
 
 let elapsed = 0;
 let monsterDistance = 100;
 let messageTimer = 0;
-
-const keys = {};
-let audioContext = null;
 let nextFootstepTime = 0;
 
-const velocity = new THREE.Vector3();
-const forward = new THREE.Vector3();
-const right = new THREE.Vector3();
+const keys = {};
+
+let audioContext = null;
 
 const player = {
   x: 0,
@@ -69,17 +69,33 @@ const textures = {
 const textureLoader = new THREE.TextureLoader();
 const gltfLoader = new GLTFLoader();
 
-// Monster animation system
-let monsterMixer = null;
-let monsterAnimations = {};
-let currentMonsterAnimation = null;
+const monsterClips = {
+  idle: "Spell_Simple_Idle",
+  walk: "Walk",
+  run: "Run_Anime",
+  jump: "Jump_air",
+  land: "Jump_Land",
+  attack: "OverhandThrow"
+};
 
 /* =========================================
-   INITIALIZE
+   INITIALIZATION
 ========================================= */
 
 function initialize() {
   try {
+    if (!container) {
+      throw new Error(
+        'Missing HTML element with id="game-container".'
+      );
+    }
+
+    if (!startScreen || !startButton) {
+      throw new Error(
+        'Missing start screen or start button. Check index.html.'
+      );
+    }
+
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x17150e);
     scene.fog = new THREE.Fog(0x17150e, 8, 38);
@@ -97,7 +113,7 @@ function initialize() {
     });
 
     renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio, 1.5)
+      Math.min(window.devicePixelRatio || 1, 1.5)
     );
 
     renderer.setSize(
@@ -143,16 +159,17 @@ function initialize() {
       onPointerLockChange
     );
 
-    startButton.addEventListener("click", () => {
-      startGame();
-    });
+    startButton.addEventListener("click", startGame);
 
-    document.getElementById("reload-button").addEventListener(
-      "click",
-      () => window.location.reload()
-    );
+    if (reloadButton) {
+      reloadButton.addEventListener("click", () => {
+        window.location.reload();
+      });
+    }
 
-    requestAnimationFrame(animate);
+    animate();
+
+    console.log("Backrooms initialized successfully.");
   } catch (error) {
     showError(error);
   }
@@ -167,17 +184,13 @@ function loadTexture(path, repeatX = 1, repeatY = 1) {
     path,
     undefined,
     undefined,
-    () => {
-      console.warn(
-        "Texture unavailable; using fallback:",
-        path
-      );
+    error => {
+      console.warn("Could not load texture:", path, error);
     }
   );
 
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-
   texture.repeat.set(repeatX, repeatY);
   texture.colorSpace = THREE.SRGBColorSpace;
 
@@ -195,7 +208,6 @@ function generateMaze() {
   );
 
   const stack = [{ x: 1, z: 1 }];
-
   maze[1][1] = 0;
 
   const directions = [
@@ -239,53 +251,35 @@ function generateMaze() {
 
     maze[nz][nx] = 0;
 
-    stack.push({
-      x: nx,
-      z: nz
-    });
+    stack.push({ x: nx, z: nz });
   }
 
-  // Create an open exit area.
-  for (
-    let z = GRID_SIZE - 5;
-    z < GRID_SIZE - 1;
-    z++
-  ) {
-    for (
-      let x = GRID_SIZE - 5;
-      x < GRID_SIZE - 1;
-      x++
-    ) {
+  // Create an open area around the exit.
+  for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
+    for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
       maze[z][x] = 0;
     }
   }
 
-  // Make a path toward the exit.
-  for (
-    let x = GRID_SIZE - 7;
-    x < GRID_SIZE - 1;
-    x++
-  ) {
+  // Connect the maze to the exit area.
+  for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
     maze[GRID_SIZE - 3][x] = 0;
   }
 }
 
 /* =========================================
-   BUILD THE 3D WORLD
+   BUILD THE WORLD
 ========================================= */
 
 function buildWorld() {
   generateMaze();
 
+  walls = [];
+
   const worldWidth = GRID_SIZE * CELL;
   const offset = worldWidth / 2;
 
-  const wallTexture = loadTexture(
-    textures.wall,
-    2,
-    1
-  );
-
+  const wallTexture = loadTexture(textures.wall, 2, 1);
   const floorTexture = loadTexture(
     textures.floor,
     GRID_SIZE,
@@ -317,32 +311,22 @@ function buildWorld() {
     side: THREE.DoubleSide
   });
 
-  floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(
-      worldWidth,
-      worldWidth
-    ),
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldWidth, worldWidth),
     floorMaterial
   );
 
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = 0;
-  floor.position.x = 0;
-  floor.position.z = 0;
-
   scene.add(floor);
 
-  ceiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(
-      worldWidth,
-      worldWidth
-    ),
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldWidth, worldWidth),
     roofMaterial
   );
 
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = WALL_HEIGHT;
-
   scene.add(ceiling);
 
   const wallGeometry = new THREE.BoxGeometry(
@@ -384,14 +368,15 @@ function buildWorld() {
     })
   );
 
+  const exitPosition = gridToWorld(
+    GRID_SIZE - 2,
+    GRID_SIZE - 2
+  );
+
   exit.position.set(
-    (GRID_SIZE - 2) * CELL -
-      offset +
-      CELL / 2,
+    exitPosition.x,
     1.6,
-    (GRID_SIZE - 2) * CELL -
-      offset +
-      CELL / 2
+    exitPosition.z
   );
 
   scene.add(exit);
@@ -399,238 +384,7 @@ function buildWorld() {
 }
 
 /* =========================================
-   PLAYER
-========================================= */
-
-function setPlayerStart() {
-  const offset = (GRID_SIZE * CELL) / 2;
-
-  player.x = CELL * 1.5 - offset;
-  player.z = CELL * 1.5 - offset;
-
-  player.yaw = 0;
-  player.pitch = 0;
-
-  updateCamera();
-}
-
-function updateCamera() {
-  camera.position.set(
-    player.x,
-    PLAYER_HEIGHT,
-    player.z
-  );
-
-  camera.rotation.order = "YXZ";
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
-}
-
-function isBlocked(x, z) {
-  const offset = (GRID_SIZE * CELL) / 2;
-
-  const gridX = Math.floor(
-    (x + offset) / CELL
-  );
-
-  const gridZ = Math.floor(
-    (z + offset) / CELL
-  );
-
-  if (
-    gridX < 0 ||
-    gridZ < 0 ||
-    gridX >= GRID_SIZE ||
-    gridZ >= GRID_SIZE
-  ) {
-    return true;
-  }
-
-  return maze[gridZ][gridX] === 1;
-}
-
-function movePlayer(dx, dz) {
-  const nextX = player.x + dx;
-  const nextZ = player.z + dz;
-
-  if (!isBlocked(nextX, player.z)) {
-    player.x = nextX;
-  }
-
-  if (!isBlocked(player.x, nextZ)) {
-    player.z = nextZ;
-  }
-}
-
-/* =========================================
-   MONSTER MODEL
-========================================= */
-
-function createMonster() {
-  monster = new THREE.Group();
-
-  // Placeholder body used if the model cannot load.
-  const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: 0x171317,
-    roughness: 1
-  });
-
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
-    bodyMaterial
-  );
-
-  body.position.y = 1.25;
-  monster.add(body);
-
-  const eyeMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff0000
-  });
-
-  for (const x of [-0.2, 0.2]) {
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 8, 8),
-      eyeMaterial
-    );
-
-    eye.position.set(x, 1.75, -0.48);
-    monster.add(eye);
-  }
-
-  // TEST MODE: Spawn the monster in front of the player.
-  const spawnDistance = 8;
-  const direction = new THREE.Vector3();
-
-  camera.getWorldDirection(direction);
-
-  // Use the horizontal viewing direction.
-  direction.y = 0;
-
-  if (direction.lengthSq() > 0) {
-    direction.normalize();
-  } else {
-    direction.set(0, 0, -1);
-  }
-
-  let spawnX = player.x;
-  let spawnZ = player.z - spawnDistance;
-  let foundPosition = false;
-
-  // Find an open position in front of the player.
-  for (let distance = spawnDistance; distance >= 2; distance -= 1) {
-    const testX = player.x + direction.x * distance;
-    const testZ = player.z + direction.z * distance;
-
-    if (!isBlocked(testX, testZ)) {
-      spawnX = testX;
-      spawnZ = testZ;
-      foundPosition = true;
-      break;
-    }
-  }
-
-  // Fallback if the forward positions are blocked.
-  if (!foundPosition) {
-    const fallbackPositions = [
-      { x: player.x + CELL, z: player.z },
-      { x: player.x - CELL, z: player.z },
-      { x: player.x, z: player.z + CELL },
-      { x: player.x, z: player.z - CELL }
-    ];
-
-    for (const position of fallbackPositions) {
-      if (!isBlocked(position.x, position.z)) {
-        spawnX = position.x;
-        spawnZ = position.z;
-        foundPosition = true;
-        break;
-      }
-    }
-  }
-
-  monster.position.set(spawnX, 0, spawnZ);
-  scene.add(monster);
-
-  // Load the custom monster model.
-  gltfLoader.load(
-    "./assets/models/Lonely_Wanderer.glb",
-
-    // SUCCESS: The model loaded.
-    gltf => {
-      if (!monster) return;
-
-      console.log("Monster GLB loaded successfully.");
-      console.log(
-        "Available animations:",
-        gltf.animations.map(clip => clip.name)
-      );
-
-      monsterModel = gltf.scene;
-      monsterModel.scale.setScalar(1.0);
-      monsterModel.position.set(0, 0, 0);
-
-      // Remove the placeholder.
-      while (monster.children.length > 0) {
-        monster.remove(monster.children[0]);
-      }
-
-      monster.add(monsterModel);
-
-      // Create the animation mixer.
-      monsterMixer = new THREE.AnimationMixer(monsterModel);
-      monsterAnimations = {};
-
-      // Register all available animations.
-      for (const clip of gltf.animations) {
-        monsterAnimations[clip.name] = clip;
-        console.log("Registered animation:", clip.name);
-      }
-
-      // Choose the idle animation first.
-      const idleClip = monsterAnimations["Spell_Simple_Idle"];
-
-      if (idleClip) {
-        currentMonsterAnimation = monsterMixer.clipAction(idleClip);
-      } else if (gltf.animations.length > 0) {
-        // Use the first animation if idle is unavailable.
-        currentMonsterAnimation = monsterMixer.clipAction(
-          gltf.animations[0]
-        );
-      } else {
-        console.error(
-          "The monster model contains no animation clips."
-        );
-        return;
-      }
-
-      // Start and loop the selected animation.
-      currentMonsterAnimation.reset();
-      currentMonsterAnimation.setLoop(THREE.LoopRepeat, Infinity);
-      currentMonsterAnimation.play();
-
-      console.log("Monster animation started.");
-      console.log("Monster mixer:", monsterMixer);
-      console.log("Current animation:", currentMonsterAnimation);
-      console.log(
-        "Animation running:",
-        currentMonsterAnimation.isRunning()
-      );
-    },
-
-    // Loading progress callback.
-    undefined,
-
-    // ERROR: The model failed to load.
-    error => {
-      console.error(
-        "Custom monster model failed to load; using placeholder.",
-        error
-      );
-    }
-  );
-}
-/* =========================================
-   WORLD AND GRID CONVERSION
+   WORLD / GRID CONVERSION
 ========================================= */
 
 function worldToGrid(x, z) {
@@ -651,38 +405,275 @@ function gridToWorld(x, z) {
   };
 }
 
+function isBlocked(x, z) {
+  const grid = worldToGrid(x, z);
+
+  if (
+    grid.x < 0 ||
+    grid.z < 0 ||
+    grid.x >= GRID_SIZE ||
+    grid.z >= GRID_SIZE
+  ) {
+    return true;
+  }
+
+  return maze[grid.z][grid.x] !== 0;
+}
+
 /* =========================================
-   A* MAZE PATHFINDING
+   PLAYER
+========================================= */
+
+function setPlayerStart() {
+  const position = gridToWorld(1, 1);
+
+  player.x = position.x;
+  player.z = position.z;
+  player.yaw = 0;
+  player.pitch = 0;
+  player.stamina = 100;
+
+  updateCamera();
+}
+
+function updateCamera() {
+  if (!camera) return;
+
+  camera.position.set(
+    player.x,
+    PLAYER_HEIGHT,
+    player.z
+  );
+
+  camera.rotation.order = "YXZ";
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+}
+
+function movePlayer(dx, dz) {
+  const nextX = player.x + dx;
+  const nextZ = player.z + dz;
+
+  if (!isBlocked(nextX, player.z)) {
+    player.x = nextX;
+  }
+
+  if (!isBlocked(player.x, nextZ)) {
+    player.z = nextZ;
+  }
+}
+
+/* =========================================
+   MONSTER MODEL AND ANIMATIONS
+========================================= */
+
+function createMonster() {
+  monster = new THREE.Group();
+
+  // Temporary placeholder if the model fails to load.
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0x171317,
+      roughness: 1
+    })
+  );
+
+  body.position.y = 1.25;
+  monster.add(body);
+
+  const eyeMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff0000
+  });
+
+  for (const x of [-0.2, 0.2]) {
+    const eye = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 8, 8),
+      eyeMaterial
+    );
+
+    eye.position.set(x, 1.75, -0.48);
+    monster.add(eye);
+  }
+
+  // Find an open spawn cell near the player.
+  let spawnX = player.x;
+  let spawnZ = player.z;
+  let foundSpawn = false;
+
+  const spawnCandidates = [
+    { x: player.x + CELL * 2, z: player.z },
+    { x: player.x - CELL * 2, z: player.z },
+    { x: player.x, z: player.z + CELL * 2 },
+    { x: player.x, z: player.z - CELL * 2 }
+  ];
+
+  for (const candidate of spawnCandidates) {
+    if (!isBlocked(candidate.x, candidate.z)) {
+      spawnX = candidate.x;
+      spawnZ = candidate.z;
+      foundSpawn = true;
+      break;
+    }
+  }
+
+  if (!foundSpawn) {
+    const openCells = [];
+
+    for (let z = 1; z < GRID_SIZE - 1; z++) {
+      for (let x = 1; x < GRID_SIZE - 1; x++) {
+        if (maze[z][x] === 0) {
+          openCells.push(gridToWorld(x, z));
+        }
+      }
+    }
+
+    if (openCells.length > 0) {
+      const position = openCells[
+        Math.floor(Math.random() * openCells.length)
+      ];
+
+      spawnX = position.x;
+      spawnZ = position.z;
+    }
+  }
+
+  monster.position.set(spawnX, 0, spawnZ);
+  scene.add(monster);
+
+  gltfLoader.load(
+    "./assets/models/Lonely_Wanderer.glb",
+
+    gltf => {
+      if (!monster) return;
+
+      console.log("Monster GLB loaded successfully.");
+
+      console.log(
+        "Available animations:",
+        gltf.animations.map(clip => clip.name)
+      );
+
+      monsterModel = gltf.scene;
+      monsterModel.scale.setScalar(1);
+      monsterModel.position.set(0, 0, 0);
+
+      // Remove the placeholder without changing the custom model.
+      while (monster.children.length > 0) {
+        monster.remove(monster.children[0]);
+      }
+
+      monster.add(monsterModel);
+
+      // Set up the animation mixer.
+      monsterMixer = new THREE.AnimationMixer(monsterModel);
+      monsterAnimations = {};
+
+      for (const clip of gltf.animations) {
+        monsterAnimations[clip.name] = clip;
+      }
+
+      // Start with idle.
+      playMonsterAnimation(monsterClips.idle);
+
+      if (!currentMonsterAnimation && gltf.animations.length > 0) {
+        currentMonsterAnimation = monsterMixer.clipAction(
+          gltf.animations[0]
+        );
+
+        currentMonsterAnimation.reset();
+        currentMonsterAnimation.play();
+      }
+
+      console.log("Monster animation setup complete.");
+    },
+
+    undefined,
+
+    error => {
+      console.error(
+        "Could not load Lonely_Wanderer.glb. Using placeholder.",
+        error
+      );
+    }
+  );
+}
+
+function playMonsterAnimation(name, options = {}) {
+  if (!monsterMixer || !monsterAnimations[name]) {
+    return;
+  }
+
+  const clip = monsterAnimations[name];
+
+  if (
+    currentMonsterAnimation &&
+    currentMonsterAnimation.getClip().name === name &&
+    currentMonsterAnimation.isRunning()
+  ) {
+    return;
+  }
+
+  previousMonsterAnimation = currentMonsterAnimation;
+
+  const nextAction = monsterMixer.clipAction(clip);
+
+  nextAction.reset();
+  nextAction.enabled = true;
+  nextAction.setEffectiveWeight(1);
+  nextAction.setEffectiveTimeScale(1);
+
+  if (options.once) {
+    nextAction.setLoop(THREE.LoopOnce, 1);
+    nextAction.clampWhenFinished = true;
+  } else {
+    nextAction.setLoop(THREE.LoopRepeat, Infinity);
+    nextAction.clampWhenFinished = false;
+  }
+
+  if (previousMonsterAnimation) {
+    nextAction.crossFadeFrom(previousMonsterAnimation, 0.2, true);
+  }
+
+  nextAction.play();
+  currentMonsterAnimation = nextAction;
+}
+
+/* =========================================
+   MONSTER PATHFINDING
 ========================================= */
 
 function findMonsterPath(startX, startZ, goalX, goalZ) {
   const key = (x, z) => `${x},${z}`;
 
-  const start = {
-    x: startX,
-    z: startZ
-  };
+  if (
+    startX < 0 ||
+    startZ < 0 ||
+    goalX < 0 ||
+    goalZ < 0 ||
+    startX >= GRID_SIZE ||
+    startZ >= GRID_SIZE ||
+    goalX >= GRID_SIZE ||
+    goalZ >= GRID_SIZE
+  ) {
+    return [];
+  }
 
-  const goal = {
-    x: goalX,
-    z: goalZ
-  };
+  if (maze[startZ][startX] !== 0) return [];
+  if (maze[goalZ][goalX] !== 0) return [];
 
-  const heuristic = (a, b) =>
-    Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+  const startKey = key(startX, startZ);
+  const goalKey = key(goalX, goalZ);
 
   const open = [{
-    x: start.x,
-    z: start.z,
+    x: startX,
+    z: startZ,
     g: 0,
-    f: heuristic(start, goal)
+    f: Math.abs(goalX - startX) + Math.abs(goalZ - startZ)
   }];
 
   const cameFrom = new Map();
-  const bestCost = new Map([
-    [key(start.x, start.z), 0]
-  ]);
-
+  const costs = new Map([[startKey, 0]]);
   const closed = new Set();
 
   const directions = [
@@ -693,35 +684,25 @@ function findMonsterPath(startX, startZ, goalX, goalZ) {
   ];
 
   while (open.length > 0) {
-    // Lowest estimated total cost first.
     open.sort((a, b) => b.f - a.f);
 
     const current = open.pop();
     const currentKey = key(current.x, current.z);
 
     if (closed.has(currentKey)) continue;
-
     closed.add(currentKey);
 
-    if (
-      current.x === goal.x &&
-      current.z === goal.z
-    ) {
+    if (currentKey === goalKey) {
       const path = [];
       let stepKey = currentKey;
 
       while (stepKey) {
         const [x, z] = stepKey.split(",").map(Number);
-
-        path.push({ x, z });
+        path.push(gridToWorld(x, z));
         stepKey = cameFrom.get(stepKey);
       }
 
-      path.reverse();
-
-      return path.map(point =>
-        gridToWorld(point.x, point.z)
-      );
+      return path.reverse();
     }
 
     for (const direction of directions) {
@@ -743,50 +724,88 @@ function findMonsterPath(startX, startZ, goalX, goalZ) {
       if (closed.has(nextKey)) continue;
 
       const newCost = current.g + 1;
-      const oldCost = bestCost.get(nextKey);
+      const oldCost = costs.get(nextKey);
 
-      if (
-        oldCost !== undefined &&
-        newCost >= oldCost
-      ) {
+      if (oldCost !== undefined && newCost >= oldCost) {
         continue;
       }
 
+      costs.set(nextKey, newCost);
       cameFrom.set(nextKey, currentKey);
-      bestCost.set(nextKey, newCost);
 
-      const next = {
-        x: nx,
-        z: nz
-      };
+      const heuristic =
+        Math.abs(goalX - nx) +
+        Math.abs(goalZ - nz);
 
       open.push({
         x: nx,
         z: nz,
         g: newCost,
-        f: newCost + heuristic(next, goal)
+        f: newCost + heuristic
       });
     }
   }
 
-  // No valid route was found.
   return [];
 }
 
+function chooseMonsterDestination() {
+  if (!monster || maze.length === 0) return;
+
+  const data = monster.userData;
+  const start = worldToGrid(
+    monster.position.x,
+    monster.position.z
+  );
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const goalX = 1 + Math.floor(
+      Math.random() * (GRID_SIZE - 2)
+    );
+
+    const goalZ = 1 + Math.floor(
+      Math.random() * (GRID_SIZE - 2)
+    );
+
+    if (maze[goalZ][goalX] !== 0) continue;
+
+    const distanceFromStart =
+      Math.abs(goalX - start.x) +
+      Math.abs(goalZ - start.z);
+
+    if (distanceFromStart < 4) continue;
+
+    const path = findMonsterPath(
+      start.x,
+      start.z,
+      goalX,
+      goalZ
+    );
+
+    if (path.length > 1) {
+      data.path = path;
+      data.pathIndex = 1;
+      data.repathTimer = 4 + Math.random() * 4;
+      return;
+    }
+  }
+
+  data.path = [];
+  data.pathIndex = 0;
+  data.repathTimer = 1;
+}
+
 /* =========================================
-   MONSTER ROAMING AND NAVIGATION
+   MONSTER AI
 ========================================= */
 
 function updateMonster(delta) {
-  if (!monster || !started || gameOver || won) {
-    return;
-  }
+  if (!monster || !started || gameOver || won) return;
 
   const data = monster.userData;
 
-  // Initialize monster AI.
-  if (!data.roaming) {
-    data.roaming = true;
+  if (!data.initialized) {
+    data.initialized = true;
     data.roamSpeed = 1.6;
     data.path = [];
     data.pathIndex = 0;
@@ -800,7 +819,6 @@ function updateMonster(delta) {
 
   data.repathTimer -= delta;
 
-  // Detect whether the monster has stopped progressing.
   const progress = Math.hypot(
     monster.position.x - data.lastX,
     monster.position.z - data.lastZ
@@ -814,16 +832,11 @@ function updateMonster(delta) {
     data.stuckTimer += delta;
   }
 
-  // Recalculate the route if movement gets stuck.
   if (data.stuckTimer > 2.5) {
     data.stuckTimer = 0;
-    data.lastX = monster.position.x;
-    data.lastZ = monster.position.z;
-
     chooseMonsterDestination();
   }
 
-  // Choose another destination when the current path ends.
   if (
     data.pathIndex >= data.path.length &&
     data.repathTimer <= 0
@@ -833,15 +846,18 @@ function updateMonster(delta) {
 
   const target = data.path[data.pathIndex];
 
+  let moving = false;
+
   if (target) {
     const dx = target.x - monster.position.x;
     const dz = target.z - monster.position.z;
-
     const distance = Math.hypot(dx, dz);
 
     if (distance < 0.3) {
       data.pathIndex++;
     } else {
+      moving = true;
+
       const step = Math.min(
         data.roamSpeed * delta,
         distance
@@ -856,8 +872,6 @@ function updateMonster(delta) {
       const nextZ =
         monster.position.z + directionZ * step;
 
-      // Follow the path through open maze cells.
-      // These checks provide an additional safety barrier.
       if (!isBlocked(nextX, monster.position.z)) {
         monster.position.x = nextX;
       }
@@ -866,7 +880,6 @@ function updateMonster(delta) {
         monster.position.z = nextZ;
       }
 
-      // Face the direction of travel.
       monster.rotation.y = Math.atan2(
         directionX,
         directionZ
@@ -874,80 +887,27 @@ function updateMonster(delta) {
     }
   }
 
-  // Track the distance between the monster and player.
-  const playerDX = player.x - monster.position.x;
-  const playerDZ = player.z - monster.position.z;
+  if (monsterMixer) {
+    playMonsterAnimation(
+      moving ? monsterClips.walk : monsterClips.idle
+    );
+  }
 
-  monsterDistance = Math.hypot(playerDX, playerDZ);
+  const dx = player.x - monster.position.x;
+  const dz = player.z - monster.position.z;
 
-  // Catch the player if they get too close.
+  monsterDistance = Math.hypot(dx, dz);
+
   if (monsterDistance < 1.3) {
     endGame(false);
   }
 
-  // Existing proximity warning.
-  monsterWarning.textContent =
-    monsterDistance < 12
-      ? "IT KNOWS YOU ARE HERE"
-      : "";
-}
-
-/* =========================================
-   CHOOSE A REACHABLE ROAMING DESTINATION
-========================================= */
-
-function chooseMonsterDestination() {
-  if (!monster || !maze.length) return;
-
-  const data = monster.userData;
-
-  const start = worldToGrid(
-    monster.position.x,
-    monster.position.z
-  );
-
-  // Try several random open cells.
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const goalX = 1 + Math.floor(
-      Math.random() * (GRID_SIZE - 2)
-    );
-
-    const goalZ = 1 + Math.floor(
-      Math.random() * (GRID_SIZE - 2)
-    );
-
-    if (maze[goalZ][goalX] !== 0) continue;
-
-    // Avoid destinations too close to the monster.
-    if (
-      Math.abs(goalX - start.x) +
-      Math.abs(goalZ - start.z) < 4
-    ) {
-      continue;
-    }
-
-    const path = findMonsterPath(
-      start.x,
-      start.z,
-      goalX,
-      goalZ
-    );
-
-    if (path.length > 1) {
-      data.path = path;
-      data.pathIndex = 1;
-
-      // Wait a little before picking another route.
-      data.repathTimer = 4 + Math.random() * 4;
-
-      return;
-    }
+  if (monsterWarning) {
+    monsterWarning.textContent =
+      monsterDistance < 12
+        ? "IT KNOWS YOU ARE HERE"
+        : "";
   }
-
-  // Retry if no suitable destination was found.
-  data.path = [];
-  data.pathIndex = 0;
-  data.repathTimer = 1;
 }
 
 /* =========================================
@@ -958,13 +918,7 @@ function playFootstep() {
   if (!audioContext) return;
 
   if (audioContext.state !== "running") {
-    audioContext.resume().catch(error => {
-      console.warn(
-        "Could not resume game audio:",
-        error
-      );
-    });
-
+    audioContext.resume().catch(() => {});
     return;
   }
 
@@ -973,18 +927,16 @@ function playFootstep() {
 
   const sampleCount = Math.max(
     1,
-    Math.floor(
-      audioContext.sampleRate * duration
-    )
+    Math.floor(audioContext.sampleRate * duration)
   );
 
-  const noiseBuffer = audioContext.createBuffer(
+  const buffer = audioContext.createBuffer(
     1,
     sampleCount,
     audioContext.sampleRate
   );
 
-  const noiseData = noiseBuffer.getChannelData(0);
+  const noiseData = buffer.getChannelData(0);
 
   for (let i = 0; i < sampleCount; i++) {
     noiseData[i] =
@@ -996,18 +948,15 @@ function playFootstep() {
   const filter = audioContext.createBiquadFilter();
   const noiseGain = audioContext.createGain();
 
-  noise.buffer = noiseBuffer;
-
+  noise.buffer = buffer;
   filter.type = "lowpass";
   filter.frequency.setValueAtTime(700, now);
 
   noiseGain.gain.setValueAtTime(0.0001, now);
-
   noiseGain.gain.exponentialRampToValueAtTime(
     0.10,
     now + 0.008
   );
-
   noiseGain.gain.exponentialRampToValueAtTime(
     0.0001,
     now + duration
@@ -1020,26 +969,21 @@ function playFootstep() {
   noise.start(now);
   noise.stop(now + duration);
 
-  // Low thump beneath the noise.
   const oscillator = audioContext.createOscillator();
   const thumpGain = audioContext.createGain();
 
   oscillator.type = "sine";
-
   oscillator.frequency.setValueAtTime(95, now);
-
   oscillator.frequency.exponentialRampToValueAtTime(
     42,
     now + duration
   );
 
   thumpGain.gain.setValueAtTime(0.0001, now);
-
   thumpGain.gain.exponentialRampToValueAtTime(
     0.12,
     now + 0.01
   );
-
   thumpGain.gain.exponentialRampToValueAtTime(
     0.0001,
     now + duration
@@ -1053,7 +997,7 @@ function playFootstep() {
 }
 
 /* =========================================
-   GAME CONTROLS
+   START / RESET GAME
 ========================================= */
 
 function startGame() {
@@ -1065,57 +1009,62 @@ function startGame() {
   elapsed = 0;
   nextFootstepTime = 0;
 
-  // Initialize audio after the Start button click.
-  try {
-    if (!audioContext) {
+  player.stamina = 100;
+
+  for (const key of Object.keys(keys)) {
+    keys[key] = false;
+  }
+
+  if (audioContext && audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  } else if (!audioContext) {
+    try {
       const AudioContextClass =
         window.AudioContext ||
         window.webkitAudioContext;
 
       if (AudioContextClass) {
         audioContext = new AudioContextClass();
+        audioContext.resume().catch(() => {});
       }
+    } catch (error) {
+      console.warn("Audio initialization failed:", error);
     }
-
-    if (
-      audioContext &&
-      audioContext.state === "suspended"
-    ) {
-      audioContext.resume().catch(error => {
-        console.warn(
-          "Could not resume game audio:",
-          error
-        );
-      });
-    }
-  } catch (error) {
-    console.warn(
-      "Game audio could not be initialized:",
-      error
-    );
   }
 
   startScreen.classList.add("hidden");
-  errorScreen.classList.add("hidden");
-  hud.classList.remove("hidden");
+
+  if (errorScreen) {
+    errorScreen.classList.add("hidden");
+  }
+
+  if (hud) {
+    hud.classList.remove("hidden");
+  }
+
+  if (startButton) {
+    startButton.textContent = "ENTER THE BACKROOMS";
+  }
 
   showMessage("Find the exit. Keep moving.");
 
-  renderer.domElement.requestPointerLock?.();
+  if (renderer && renderer.domElement.requestPointerLock) {
+    renderer.domElement.requestPointerLock();
+  }
 }
+
+/* =========================================
+   MOUSE AND KEYBOARD
+========================================= */
 
 function onPointerLockChange() {
   pointerLocked =
+    !!renderer &&
     document.pointerLockElement === renderer.domElement;
 }
 
 function onMouseMove(event) {
-  if (
-    !started ||
-    !pointerLocked ||
-    gameOver ||
-    won
-  ) {
+  if (!started || !pointerLocked || gameOver || won) {
     return;
   }
 
@@ -1140,6 +1089,10 @@ function onKeyDown(event) {
       "KeyA",
       "KeyS",
       "KeyD",
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
       "Space"
     ].includes(event.code)
   ) {
@@ -1152,9 +1105,7 @@ function onKeyDown(event) {
     !gameOver &&
     !won
   ) {
-    showMessage(
-      "Click the game to resume looking around."
-    );
+    showMessage("Click the game to resume looking around.");
   }
 
   if (
@@ -1169,17 +1120,21 @@ function onKeyUp(event) {
   keys[event.code] = false;
 }
 
+/* =========================================
+   PLAYER MOVEMENT
+========================================= */
+
 function updatePlayer(delta) {
   if (!started || gameOver || won) return;
 
-  const movingForward =
+  const forwardInput =
     keys.KeyW || keys.ArrowUp
       ? 1
       : keys.KeyS || keys.ArrowDown
         ? -1
         : 0;
 
-  const movingSideways =
+  const sidewaysInput =
     keys.KeyD || keys.ArrowRight
       ? 1
       : keys.KeyA || keys.ArrowLeft
@@ -1187,8 +1142,8 @@ function updatePlayer(delta) {
         : 0;
 
   const moving =
-    movingForward !== 0 ||
-    movingSideways !== 0;
+    forwardInput !== 0 ||
+    sidewaysInput !== 0;
 
   const sprinting =
     keys.ShiftLeft ||
@@ -1196,11 +1151,7 @@ function updatePlayer(delta) {
 
   let speed = player.speed;
 
-  if (
-    sprinting &&
-    moving &&
-    player.stamina > 0
-  ) {
+  if (sprinting && moving && player.stamina > 0) {
     speed = player.sprintSpeed;
 
     player.stamina = Math.max(
@@ -1217,55 +1168,39 @@ function updatePlayer(delta) {
   const sin = Math.sin(player.yaw);
   const cos = Math.cos(player.yaw);
 
-  const moveX =
-    (
-      -sin * movingForward +
-      cos * movingSideways
-    ) *
+  let moveX =
+    (-sin * forwardInput + cos * sidewaysInput) *
     speed *
     delta;
 
-  const moveZ =
-    (
-      -cos * movingForward -
-      sin * movingSideways
-    ) *
+  let moveZ =
+    (-cos * forwardInput - sin * sidewaysInput) *
     speed *
     delta;
 
-  const length = Math.hypot(moveX, moveZ);
+  // Prevent diagonal movement from being faster.
+  const inputLength = Math.hypot(
+    forwardInput,
+    sidewaysInput
+  );
 
-  const scale =
-    length > speed * delta
-      ? 0.7071
-      : 1;
+  if (inputLength > 1) {
+    moveX *= Math.SQRT1_2;
+    moveZ *= Math.SQRT1_2;
+  }
 
   const previousX = player.x;
   const previousZ = player.z;
 
-  movePlayer(
-    moveX * scale,
-    moveZ * scale
-  );
-
+  movePlayer(moveX, moveZ);
   updateCamera();
 
-  // Play footsteps only when the player actually moves.
   const distanceMoved = Math.hypot(
     player.x - previousX,
     player.z - previousZ
   );
 
-  const actuallyMoving =
-    moving &&
-    distanceMoved > 0.0005;
-
-  if (
-    actuallyMoving &&
-    started &&
-    !gameOver &&
-    !won
-  ) {
+  if (moving && distanceMoved > 0.0005) {
     const stepInterval =
       speed === player.sprintSpeed
         ? 0.30
@@ -1275,12 +1210,16 @@ function updatePlayer(delta) {
 
     if (now >= nextFootstepTime) {
       playFootstep();
-
-      nextFootstepTime =
-        now + stepInterval;
+      nextFootstepTime = now + stepInterval;
     }
   } else {
     nextFootstepTime = 0;
+  }
+
+  // Update HUD status if the existing element is available.
+  if (statusText && !gameOver && !won) {
+    statusText.textContent =
+      `STAMINA: ${Math.round(player.stamina)}%`;
   }
 
   const exit = scene.userData.exit;
@@ -1301,6 +1240,8 @@ function updatePlayer(delta) {
 ========================================= */
 
 function showMessage(text) {
+  if (!messageText) return;
+
   messageText.textContent = text;
   messageTimer = 3;
 }
@@ -1311,31 +1252,39 @@ function endGame(success) {
   if (success) {
     won = true;
 
-    showMessage(
-      "YOU ESCAPED... FOR NOW."
-    );
+    showMessage("YOU ESCAPED... FOR NOW.");
 
-    statusText.textContent = "EXIT FOUND";
+    if (statusText) {
+      statusText.textContent = "EXIT FOUND";
+    }
   } else {
     gameOver = true;
 
     showMessage("IT FOUND YOU.");
 
-    statusText.textContent = "YOU WERE CAUGHT";
+    if (statusText) {
+      statusText.textContent = "YOU WERE CAUGHT";
+    }
   }
 
-  monsterWarning.textContent = "";
+  if (monsterWarning) {
+    monsterWarning.textContent = "";
+  }
 
   setTimeout(() => {
-    if (!success) {
+    if (startScreen) {
       startScreen.classList.remove("hidden");
-      startButton.textContent = "TRY AGAIN";
-    } else {
-      startScreen.classList.remove("hidden");
-      startButton.textContent = "PLAY AGAIN";
     }
 
-    hud.classList.add("hidden");
+    if (startButton) {
+      startButton.textContent = success
+        ? "PLAY AGAIN"
+        : "TRY AGAIN";
+    }
+
+    if (hud) {
+      hud.classList.add("hidden");
+    }
 
     document.exitPointerLock?.();
 
@@ -1344,15 +1293,20 @@ function endGame(success) {
 }
 
 function showError(error) {
-  console.error(
-    "Backrooms initialization error:",
-    error
-  );
+  console.error("Backrooms initialization error:", error);
 
-  errorMessage.textContent =
-    "The game could not initialize. Reload the page and check the browser console for the first error.";
+  if (errorMessage) {
+    errorMessage.textContent =
+      "The game could not initialize. Check the browser console for the error.";
+  }
 
-  errorScreen.classList.remove("hidden");
+  if (errorScreen) {
+    errorScreen.classList.remove("hidden");
+  } else {
+    alert(
+      "The Backrooms game could not initialize. Open the browser console for details."
+    );
+  }
 }
 
 /* =========================================
@@ -1376,14 +1330,13 @@ function onResize() {
 function animate() {
   requestAnimationFrame(animate);
 
-  if (!renderer || !scene || !camera) return;
+  if (!renderer || !scene || !camera || !clock) {
+    return;
+  }
 
-  const delta = Math.min(
-    clock.getDelta(),
-    0.05
-  );
+  const delta = Math.min(clock.getDelta(), 0.05);
 
-  // Update the monster's animation every frame.
+  // Animations must update even before gameplay starts.
   if (monsterMixer) {
     monsterMixer.update(delta);
   }
@@ -1397,7 +1350,7 @@ function animate() {
     if (messageTimer > 0) {
       messageTimer -= delta;
 
-      if (messageTimer <= 0) {
+      if (messageTimer <= 0 && messageText) {
         messageText.textContent = "";
       }
     }
