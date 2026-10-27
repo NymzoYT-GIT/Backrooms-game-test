@@ -797,6 +797,8 @@ function chooseMonsterDestination() {
 
 /* =========================================
    MONSTER BEHAVIOR AI
+   Improved patrols, smooth turning,
+   path following, and stuck recovery.
 ========================================= */
 
 const MONSTER_STATE = {
@@ -823,8 +825,26 @@ const MONSTER_AI = {
   searchDuration: 8,
   investigationDuration: 6,
 
-  catchDistance: 1.3
+  catchDistance: 1.3,
+
+  // Smooth turning
+  turnSpeed: 2.2,
+  turnThreshold: 0.12,
+
+  // Random patrol behavior
+  minPatrolWait: 1.5,
+  maxPatrolWait: 4.0,
+  minPatrolDistance: 5,
+
+  // Stuck recovery
+  stuckTimeout: 3,
+  progressThreshold: 0.02
 };
+
+
+/* =========================================
+   INITIALIZATION
+========================================= */
 
 function initializeMonsterAI() {
   if (!monster) return;
@@ -852,10 +872,19 @@ function initializeMonsterAI() {
 
   data.stuckTimer = 0;
 
+  data.patrolTurnTimer = 0;
+  data.patrolTargetX = monster.position.x;
+  data.patrolTargetZ = monster.position.z;
+
   chooseMonsterDestination();
 
   console.log("Monster AI initialized:", data.state);
 }
+
+
+/* =========================================
+   STATE MANAGEMENT
+========================================= */
 
 function setMonsterState(newState) {
   if (!monster) return;
@@ -878,14 +907,68 @@ function setMonsterState(newState) {
   if (newState === MONSTER_STATE.PATROL) {
     data.lastKnownPlayer = null;
     data.investigationTarget = null;
+
+    data.patrolTurnTimer = 0;
     chooseMonsterDestination();
+  }
+
+  if (newState === MONSTER_STATE.INVESTIGATE) {
+    data.patrolTurnTimer = 0;
+  }
+
+  if (newState === MONSTER_STATE.CHASE) {
+    data.lostSightTimer = 0;
   }
 
   if (newState === MONSTER_STATE.SEARCH) {
     data.path = [];
     data.pathIndex = 0;
+    data.repathTimer = 0;
+  }
+
+  if (newState === MONSTER_STATE.RETURN) {
+    data.path = [];
+    data.pathIndex = 0;
+    data.repathTimer = 0;
   }
 }
+
+
+/* =========================================
+   SMOOTH TURNING
+========================================= */
+
+function smoothMonsterTurn(targetX, targetZ, delta) {
+  if (!monster) return;
+
+  const dx = targetX - monster.position.x;
+  const dz = targetZ - monster.position.z;
+
+  if (Math.hypot(dx, dz) < 0.001) return;
+
+  const targetRotation = Math.atan2(dx, dz);
+
+  // Normalize the angular difference to the shortest turn.
+  let difference = targetRotation - monster.rotation.y;
+
+  difference = Math.atan2(
+    Math.sin(difference),
+    Math.cos(difference)
+  );
+
+  // Gradually rotate toward the destination.
+  const turnAmount = Math.min(
+    Math.abs(difference),
+    MONSTER_AI.turnSpeed * delta
+  );
+
+  monster.rotation.y += Math.sign(difference) * turnAmount;
+}
+
+
+/* =========================================
+   LINE OF SIGHT
+========================================= */
 
 function canMonsterSeePlayer() {
   if (!monster || !camera) return false;
@@ -899,7 +982,7 @@ function canMonsterSeePlayer() {
     return false;
   }
 
-  // A nearby player can be seen without precise facing.
+  // A very close player can be detected from any direction.
   if (distance < 2.5) {
     return true;
   }
@@ -919,7 +1002,7 @@ function canMonsterSeePlayer() {
     return false;
   }
 
-  // Raycast against walls to prevent seeing through them.
+  // Raycast against walls so the monster cannot see through them.
   const start = monster.position.clone();
   start.y = 1.6;
 
@@ -946,6 +1029,11 @@ function canMonsterSeePlayer() {
   return hits.length === 0;
 }
 
+
+/* =========================================
+   SOUND DETECTION
+========================================= */
+
 function notifyMonsterOfNoise(x, z, intensity = 1) {
   if (!monster || !monster.userData.aiInitialized) {
     return;
@@ -959,27 +1047,30 @@ function notifyMonsterOfNoise(x, z, intensity = 1) {
   );
 
   const hearingRange =
-    MONSTER_AI.hearingDistance * intensity;
+    intensity > 1
+      ? MONSTER_AI.sprintHearingDistance
+      : MONSTER_AI.hearingDistance;
 
-  if (distance > hearingRange) {
+  if (distance > hearingRange * Math.min(intensity, 1.5)) {
     return;
   }
 
-  // The monster does not stop chasing because of a noise.
+  // Sounds do not interrupt an active chase.
   if (data.state === MONSTER_STATE.CHASE) {
     return;
   }
 
-  data.investigationTarget = {
-    x,
-    z
-  };
-
+  data.investigationTarget = { x, z };
   data.stateTimer = 0;
 
   setMonsterState(MONSTER_STATE.INVESTIGATE);
   setMonsterDestination(x, z);
 }
+
+
+/* =========================================
+   PATHFINDING DESTINATIONS
+========================================= */
 
 function setMonsterDestination(x, z) {
   if (!monster) return;
@@ -1002,14 +1093,21 @@ function setMonsterDestination(x, z) {
     return;
   }
 
-  // If the requested destination is a wall,
-  // find a nearby open cell.
-  if (maze[goal.z][goal.x] !== 0) {
+  // If the destination is blocked, find an open cell nearby.
+  if (!maze[goal.z] || maze[goal.z][goal.x] !== 0) {
     let found = false;
 
     for (let radius = 1; radius <= 4 && !found; radius++) {
       for (let dz = -radius; dz <= radius && !found; dz++) {
         for (let dx = -radius; dx <= radius; dx++) {
+          // Only check the current perimeter of the search.
+          if (
+            Math.abs(dx) !== radius &&
+            Math.abs(dz) !== radius
+          ) {
+            continue;
+          }
+
           const gx = goal.x + dx;
           const gz = goal.z + dz;
 
@@ -1018,6 +1116,7 @@ function setMonsterDestination(x, z) {
             gz >= 0 &&
             gx < GRID_SIZE &&
             gz < GRID_SIZE &&
+            maze[gz] &&
             maze[gz][gx] === 0
           ) {
             goal.x = gx;
@@ -1046,7 +1145,67 @@ function setMonsterDestination(x, z) {
     data.path = [];
     data.pathIndex = 0;
   }
+
+  data.repathTimer = 0.6;
 }
+
+
+/* =========================================
+   RANDOM PATROL DESTINATIONS
+========================================= */
+
+function chooseRandomPatrolTarget() {
+  if (!monster) return;
+
+  const data = monster.userData;
+
+  // Try several times to find a destination far enough away.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    chooseMonsterDestination();
+
+    const path = data.path;
+
+    if (!path || path.length === 0) {
+      continue;
+    }
+
+    // Measure the distance to the destination waypoint.
+    const lastWaypoint = path[path.length - 1];
+
+    const worldTarget = gridToWorld(
+      lastWaypoint.x,
+      lastWaypoint.z
+    );
+
+    const distance = Math.hypot(
+      worldTarget.x - monster.position.x,
+      worldTarget.z - monster.position.z
+    );
+
+    if (distance >= MONSTER_AI.minPatrolDistance) {
+      data.patrolTargetX = worldTarget.x;
+      data.patrolTargetZ = worldTarget.z;
+
+      data.patrolTurnTimer =
+        MONSTER_AI.minPatrolWait +
+        Math.random() *
+          (
+            MONSTER_AI.maxPatrolWait -
+            MONSTER_AI.minPatrolWait
+          );
+
+      return;
+    }
+  }
+
+  // Retry shortly if no suitable destination was found.
+  data.patrolTurnTimer = 1;
+}
+
+
+/* =========================================
+   MAIN MONSTER AI
+========================================= */
 
 function updateMonster(delta) {
   if (!monster || !started || gameOver || won) {
@@ -1062,13 +1221,13 @@ function updateMonster(delta) {
   data.stateTimer += delta;
   data.repathTimer -= delta;
 
-  // Detect whether the monster has stopped moving.
+  // Track whether the monster is making progress.
   const progress = Math.hypot(
     monster.position.x - data.lastX,
     monster.position.z - data.lastZ
   );
 
-  if (progress > 0.02) {
+  if (progress > MONSTER_AI.progressThreshold) {
     data.stuckTimer = 0;
     data.lastX = monster.position.x;
     data.lastZ = monster.position.z;
@@ -1076,26 +1235,37 @@ function updateMonster(delta) {
     data.stuckTimer += delta;
   }
 
-  if (data.stuckTimer > 3) {
+  // Recover if the monster has been stuck for too long.
+  if (data.stuckTimer > MONSTER_AI.stuckTimeout) {
     data.stuckTimer = 0;
     data.repathTimer = 0;
 
-    if (
-      data.state === MONSTER_STATE.CHASE ||
-      data.state === MONSTER_STATE.INVESTIGATE
+    if (data.state === MONSTER_STATE.CHASE) {
+      setMonsterDestination(player.x, player.z);
+    } else if (
+      data.state === MONSTER_STATE.INVESTIGATE &&
+      data.investigationTarget
     ) {
       setMonsterDestination(
-        data.lastKnownPlayer?.x ?? player.x,
-        data.lastKnownPlayer?.z ?? player.z
+        data.investigationTarget.x,
+        data.investigationTarget.z
       );
+    } else if (data.state === MONSTER_STATE.PATROL) {
+      data.patrolTurnTimer = 0;
+      chooseRandomPatrolTarget();
+    } else if (data.state === MONSTER_STATE.SEARCH) {
+      data.path = [];
+      data.pathIndex = 0;
     } else {
-      chooseMonsterDestination();
+      data.path = [];
+      data.pathIndex = 0;
+      data.patrolTurnTimer = 0;
     }
   }
 
+  // Check whether the monster can see the player.
   const seesPlayer = canMonsterSeePlayer();
 
-  // Remember the player's last visible position.
   if (seesPlayer) {
     data.lastKnownPlayer = {
       x: player.x,
@@ -1115,14 +1285,17 @@ function updateMonster(delta) {
     }
   }
 
-  // Choose behavior based on the current state.
+  // Choose the next behavior.
   switch (data.state) {
     case MONSTER_STATE.PATROL: {
+      data.patrolTurnTimer -= delta;
+
+      // Pick a different destination at random intervals.
       if (
-        data.pathIndex >= data.path.length &&
-        data.repathTimer <= 0
+        data.patrolTurnTimer <= 0 ||
+        data.pathIndex >= data.path.length
       ) {
-        chooseMonsterDestination();
+        chooseRandomPatrolTarget();
       }
 
       break;
@@ -1140,13 +1313,14 @@ function updateMonster(delta) {
           );
         }
 
-        if (
-          Math.hypot(
-            monster.position.x - data.investigationTarget.x,
-            monster.position.z - data.investigationTarget.z
-          ) < 1.5
-        ) {
+        const distanceToNoise = Math.hypot(
+          monster.position.x - data.investigationTarget.x,
+          monster.position.z - data.investigationTarget.z
+        );
+
+        if (distanceToNoise < 1.5) {
           setMonsterState(MONSTER_STATE.SEARCH);
+          break;
         }
       }
 
@@ -1161,7 +1335,7 @@ function updateMonster(delta) {
     }
 
     case MONSTER_STATE.CHASE: {
-      // Update the route toward the latest known position.
+      // Chase the player's latest position.
       if (data.repathTimer <= 0) {
         setMonsterDestination(player.x, player.z);
         data.repathTimer = 0.6;
@@ -1176,7 +1350,7 @@ function updateMonster(delta) {
         break;
       }
 
-      // Search around the last known position.
+      // Search around the last place the player was seen.
       if (
         data.pathIndex >= data.path.length &&
         data.repathTimer <= 0
@@ -1201,6 +1375,7 @@ function updateMonster(delta) {
     }
 
     case MONSTER_STATE.RETURN: {
+      // Resume wandering once the current route is finished.
       if (
         data.pathIndex >= data.path.length &&
         data.repathTimer <= 0
@@ -1212,7 +1387,7 @@ function updateMonster(delta) {
     }
   }
 
-  // Move the monster along its calculated path.
+  // Follow the current path.
   const target = data.path[data.pathIndex];
 
   let moving = false;
@@ -1236,8 +1411,6 @@ function updateMonster(delta) {
         speed = MONSTER_AI.chaseSpeed;
       } else if (data.state === MONSTER_STATE.SEARCH) {
         speed = MONSTER_AI.searchSpeed;
-      } else if (data.state === MONSTER_STATE.RETURN) {
-        speed = MONSTER_AI.patrolSpeed;
       }
 
       const step = Math.min(speed * delta, distance);
@@ -1245,6 +1418,10 @@ function updateMonster(delta) {
       const dirX = dx / distance;
       const dirZ = dz / distance;
 
+      // Turn toward the waypoint smoothly.
+      smoothMonsterTurn(target.x, target.z, delta);
+
+      // Move along the path without stepping through walls.
       const nextX = monster.position.x + dirX * step;
       const nextZ = monster.position.z + dirZ * step;
 
@@ -1255,13 +1432,10 @@ function updateMonster(delta) {
       if (!isBlocked(monster.position.x, nextZ)) {
         monster.position.z = nextZ;
       }
-
-      // Turn toward the direction of travel.
-      monster.rotation.y = Math.atan2(dirX, dirZ);
     }
   }
 
-  // Select animation to match the behavior.
+  // Match the animation to the current behavior.
   if (monsterMixer) {
     if (data.state === MONSTER_STATE.CHASE && moving) {
       playMonsterAnimation(monsterClips.run);
@@ -1272,6 +1446,7 @@ function updateMonster(delta) {
     }
   }
 
+  // Check whether the monster has caught the player.
   monsterDistance = Math.hypot(
     player.x - monster.position.x,
     player.z - monster.position.z
@@ -1281,6 +1456,7 @@ function updateMonster(delta) {
     endGame(false);
   }
 
+  // Update the monster warning.
   if (monsterWarning) {
     if (data.state === MONSTER_STATE.CHASE) {
       monsterWarning.textContent = "IT FOUND YOU. RUN!";
