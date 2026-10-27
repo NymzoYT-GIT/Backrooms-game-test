@@ -1513,33 +1513,27 @@ function toggleInventory() {
 
   inventoryOpen = !inventoryOpen;
 
-  inventoryOverlay.style.display =
-    inventoryOpen ? "flex" : "none";
+  // Remove the hidden class so CSS doesn't override the display.
+  inventoryOverlay.classList.toggle("hidden", !inventoryOpen);
+  inventoryOverlay.style.display = inventoryOpen ? "flex" : "none";
 
-  if (inventoryOpen && document.pointerLockElement) {
-    document.exitPointerLock();
-  } else if (
-    !inventoryOpen &&
-    started &&
-    renderer?.domElement.requestPointerLock
-  ) {
+  if (inventoryOpen) {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  } else if (started && renderer?.domElement.requestPointerLock) {
     renderer.domElement.requestPointerLock();
   }
 }
 
 function closeInventory() {
+  if (!inventoryOverlay) return;
+
   inventoryOpen = false;
+  inventoryOverlay.classList.add("hidden");
+  inventoryOverlay.style.display = "none";
 
-  if (inventoryOverlay) {
-    inventoryOverlay.style.display = "none";
-  }
-
-  if (
-    started &&
-    !gameOver &&
-    !won &&
-    renderer?.domElement.requestPointerLock
-  ) {
+  if (started && !gameOver && !won && renderer?.domElement.requestPointerLock) {
     renderer.domElement.requestPointerLock();
   }
 }
