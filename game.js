@@ -552,11 +552,16 @@ function createMonster() {
   gltfLoader.load(
     "./assets/models/Lonely_Wanderer.glb",
 
-    gltf => {
+ gltf => {
   if (!monster) return;
 
-  monsterModel = gltf.scene;
+  console.log("Monster GLB loaded successfully.");
+  console.log(
+    "Available animations:",
+    gltf.animations.map(clip => clip.name)
+  );
 
+  monsterModel = gltf.scene;
   monsterModel.scale.setScalar(1.0);
   monsterModel.position.set(0, 0, 0);
 
@@ -564,6 +569,38 @@ function createMonster() {
   while (monster.children.length > 0) {
     monster.remove(monster.children[0]);
   }
+
+  monster.add(monsterModel);
+
+  // Create the animation mixer.
+  monsterMixer = new THREE.AnimationMixer(monsterModel);
+  monsterAnimations = {};
+
+  // Register the available animations.
+  for (const clip of gltf.animations) {
+    monsterAnimations[clip.name] = clip;
+    console.log("Registered animation:", clip.name);
+  }
+
+  // Start the idle animation.
+  const idleClip = monsterAnimations["Spell_Simple_Idle"];
+
+  if (idleClip) {
+    currentMonsterAnimation = monsterMixer.clipAction(idleClip);
+  } else if (gltf.animations.length > 0) {
+    currentMonsterAnimation = monsterMixer.clipAction(
+      gltf.animations[0]
+    );
+  } else {
+    console.error("No animation clips found in the monster model.");
+    return;
+  }
+
+  currentMonsterAnimation.reset();
+  currentMonsterAnimation.play();
+
+  console.log("Monster animation started.");
+},
 
   monster.add(monsterModel);
 
