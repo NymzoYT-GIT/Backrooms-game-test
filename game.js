@@ -69,6 +69,11 @@ const textures = {
 const textureLoader = new THREE.TextureLoader();
 const gltfLoader = new GLTFLoader();
 
+// Monster animation system
+let monsterMixer = null;
+let monsterAnimations = {};
+let currentMonsterAnimation = null;
+
 /* =========================================
    INITIALIZE
 ========================================= */
@@ -548,21 +553,49 @@ function createMonster() {
     "./assets/models/Lonely_Wanderer.glb",
 
     gltf => {
-      if (!monster) return;
+  if (!monster) return;
 
-      monsterModel = gltf.scene;
+  monsterModel = gltf.scene;
 
-      monsterModel.scale.setScalar(1.0);
-      monsterModel.position.set(0, 0, 0);
+  monsterModel.scale.setScalar(1.0);
+  monsterModel.position.set(0, 0, 0);
 
-      // Keep the original model unchanged.
-      // Remove the placeholder after the model loads.
-      while (monster.children.length > 0) {
-        monster.remove(monster.children[0]);
-      }
+  // Remove the placeholder.
+  while (monster.children.length > 0) {
+    monster.remove(monster.children[0]);
+  }
 
-      monster.add(monsterModel);
-    },
+  monster.add(monsterModel);
+
+  // Set up the animation system.
+  monsterMixer = new THREE.AnimationMixer(monsterModel);
+  monsterAnimations = {};
+
+  for (const clip of gltf.animations) {
+    monsterAnimations[clip.name] = clip;
+    console.log("Monster animation found:", clip.name);
+  }
+
+  // Start with the idle animation.
+  if (monsterAnimations["Spell_Simple_Idle"]) {
+    currentMonsterAnimation = monsterMixer.clipAction(
+      monsterAnimations["Spell_Simple_Idle"]
+    );
+
+    currentMonsterAnimation.play();
+  } else if (gltf.animations.length > 0) {
+    currentMonsterAnimation = monsterMixer.clipAction(
+      gltf.animations[0]
+    );
+
+    currentMonsterAnimation.play();
+  }
+
+  console.log(
+    "Monster model loaded. Animation clips:",
+    gltf.animations.map(clip => clip.name)
+  );
+},
 
     undefined,
 
@@ -1328,6 +1361,11 @@ function animate() {
     clock.getDelta(),
     0.05
   );
+
+  // Update the monster's animation every frame.
+  if (monsterMixer) {
+    monsterMixer.update(delta);
+  }
 
   if (started && !gameOver && !won) {
     elapsed += delta;
