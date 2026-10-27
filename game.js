@@ -1692,10 +1692,11 @@ function updatePlayer(delta) {
   let forward = 0;
   let strafe = 0;
 
-  if (keys.KeyW || keys.w || keys.ArrowUp) forward += 1;
-  if (keys.KeyS || keys.s || keys.ArrowDown) forward -= 1;
-  if (keys.KeyA || keys.a || keys.ArrowLeft) strafe -= 1;
-  if (keys.KeyD || keys.d || keys.ArrowRight) strafe += 1;
+ // W / Up moves forward; S / Down moves backward.
+   if (keys.KeyW || keys.w || keys.ArrowUp) forward -= 1;
+   if (keys.KeyS || keys.s || keys.ArrowDown) forward += 1;
+   if (keys.KeyA || keys.a || keys.ArrowLeft) strafe -= 1;
+   if (keys.KeyD || keys.d || keys.ArrowRight) strafe += 1;
 
   const inputLength = Math.hypot(forward, strafe);
 
@@ -1704,20 +1705,20 @@ function updatePlayer(delta) {
     strafe /= inputLength;
   }
 
-  const wantsSprint =
-    (keys.ShiftLeft || keys.ShiftRight || keys.Shift) &&
-    player.stamina > 0 &&
-    forward > 0;
-
+const wantsSprint =
+  (keys.ShiftLeft || keys.ShiftRight || keys.Shift) &&
+  player.stamina > 0 &&
+  forward < 0;
+   
   const speed = wantsSprint
     ? player.sprintSpeed
     : player.speed;
 
-  if (wantsSprint) {
-    player.stamina = Math.max(0, player.stamina - 25 * delta);
-  } else {
-    player.stamina = Math.min(100, player.stamina + 16 * delta);
-  }
+if (wantsSprint && player.stamina > 0) {
+  player.stamina = Math.max(0, player.stamina - 25 * delta);
+} else {
+  player.stamina = Math.min(100, player.stamina + 16 * delta);
+}
 
   const sinYaw = Math.sin(player.yaw);
   const cosYaw = Math.cos(player.yaw);
