@@ -676,28 +676,6 @@ function createMonster() {
     }
   );
 }
-      playMonsterAnimation(monsterClips.idle);
-
-      if (!currentMonsterAnimation && gltf.animations.length > 0) {
-        currentMonsterAnimation = monsterMixer.clipAction(
-          gltf.animations[0]
-        );
-
-        currentMonsterAnimation.reset();
-        currentMonsterAnimation.play();
-      }
-
-      console.log("Monster model and animations ready.");
-    },
-    undefined,
-    error => {
-      console.error(
-        "Could not load Lonely_Wanderer.glb. Using placeholder.",
-        error
-      );
-    }
-  );
-}
 
 function playMonsterAnimation(name, options = {}) {
   if (!monsterMixer || !monsterAnimations[name]) return;
@@ -1000,392 +978,241 @@ function chooseRandomPatrolTarget() {
     data.patrolTurnTimer =
       MONSTER_AI.minPatrolWait +
       Math.random() *
-      (MONSTER_AI.maxPatrolWait - MONSTER_AI.minPatrolWait);
+        (MONSTER_AI.maxPatrolWait - MONSTER_AI.minPatrolWait);
 
-    data.repathTimer = 0.5;
+    data.repathTimer = MONSTER_AI.chaseRepathInterval;
     return;
   }
-
-  data.path = [];
-  data.pathIndex = 0;
-  data.patrolTurnTimer = 1;
 }
 
-/* =========================================
-   AI INITIALIZATION AND STATE CHANGES
-========================================= */
-
-function initializeMonsterAI() {
+function setMonsterState(state) {
   if (!monster) return;
 
   const data = monster.userData;
 
-  data.aiInitialized = true;
-  data.state = MONSTER_STATE.PATROL;
-
+  data.state = state;
+  data.stateTimer = 0;
+  data.repathTimer = 0;
   data.path = [];
   data.pathIndex = 0;
-  data.repathTimer = 0;
-  data.stateTimer = 0;
-  data.lostSightTimer = 0;
 
-  data.lastKnownPlayer = null;
-  data.investigationTarget = null;
-
-  data.lastX = monster.position.x;
-  data.lastZ = monster.position.z;
-  data.stuckTimer = 0;
-  data.patrolTurnTimer = 0;
-
-  data.homeX = monster.position.x;
-  data.homeZ = monster.position.z;
-
-  chooseRandomPatrolTarget();
-
-  console.log("Monster AI initialized.");
-}
-
-function setMonsterState(newState) {
-  if (!monster) return;
-
-  const data = monster.userData;
-  if (data.state === newState) return;
-
-  console.log("Monster state:", data.state, "->", newState);
-
-  data.state = newState;
-  data.stateTimer = 0;
-  data.repathTimer = 0;
-
-  if (newState === MONSTER_STATE.PATROL) {
-    data.lastKnownPlayer = null;
-    data.investigationTarget = null;
+  if (state === MONSTER_STATE.PATROL) {
     chooseRandomPatrolTarget();
   }
 
-  if (newState === MONSTER_STATE.CHASE) {
-    data.lostSightTimer = 0;
-    data.lastKnownPlayer = { x: player.x, z: player.z };
-  }
-
-  if (newState === MONSTER_STATE.SEARCH) {
-    data.path = [];
-    data.pathIndex = 0;
-  }
-
-  if (newState === MONSTER_STATE.RETURN) {
+  if (state === MONSTER_STATE.RETURN) {
     setMonsterDestination(data.homeX, data.homeZ);
   }
 }
 
 /* =========================================
-   SMOOTH TURNING
-========================================= */
-
-function smoothMonsterTurn(targetX, targetZ, delta) {
-  const dx = targetX - monster.position.x;
-  const dz = targetZ - monster.position.z;
-
-  if (Math.hypot(dx, dz) < 0.001) return;
-
-  const targetRotation = Math.atan2(dx, dz);
-
-  let difference = targetRotation - monster.rotation.y;
-
-  difference = Math.atan2(
-    Math.sin(difference),
-    Math.cos(difference)
-  );
-
-  const turnAmount = Math.min(
-    Math.abs(difference),
-    MONSTER_AI.turnSpeed * delta
-  );
-
-  monster.rotation.y += Math.sign(difference) * turnAmount;
-}
-
-/* =========================================
-   LINE OF SIGHT
+   MONSTER SIGHT AND HEARING
 ========================================= */
 
 function canMonsterSeePlayer() {
-  if (!monster) return false;
+  if (!monster || !camera) return false;
 
   const dx = player.x - monster.position.x;
   const dz = player.z - monster.position.z;
   const distance = Math.hypot(dx, dz);
 
   if (distance > MONSTER_AI.sightDistance) return false;
-  if (distance < 2.5) return true;
 
-  const facingX = Math.sin(monster.rotation.y);
-  const facingZ = Math.cos(monster.rotation.y);
+  const directionX = Math.sin(monster.rotation.y);
+  const directionZ = Math.cos(monster.rotation.y);
 
-  const directionX = dx / distance;
-  const directionZ = dz / distance;
+  const toPlayerX = dx / Math.max(distance, 0.0001);
+  const toPlayerZ = dz / Math.max(distance, 0.0001);
 
-  const dot = facingX * directionX + facingZ * directionZ;
+  const dot = directionX * toPlayerX + directionZ * toPlayerZ;
+  const angle = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
 
-  if (dot < Math.cos(MONSTER_AI.sightAngle)) return false;
+  if (angle > MONSTER_AI.sightAngle) return false;
 
-  const start = new THREE.Vector3(
-    monster.position.x,
-    1.6,
-    monster.position.z
-  );
+  // Raycast checks whether a wall blocks the view.
+  const origin = monster.position.clone();
+  origin.y = 1.6;
 
-  const end = new THREE.Vector3(
-    player.x,
-    PLAYER_HEIGHT,
-    player.z
-  );
-
-  const direction = end.clone().sub(start);
+  const target = new THREE.Vector3(player.x, PLAYER_HEIGHT, player.z);
+  const direction = target.clone().sub(origin);
   const rayDistance = direction.length();
 
   direction.normalize();
 
-  const raycaster = new THREE.Raycaster(
-    start,
-    direction,
-    0,
-    rayDistance
-  );
+  const raycaster = new THREE.Raycaster(origin, direction, 0, rayDistance);
+  const intersections = raycaster.intersectObjects(walls, false);
 
-  return raycaster.intersectObjects(walls, false).length === 0;
+  return intersections.length === 0;
 }
 
-/* =========================================
-   SOUND DETECTION
-========================================= */
-
-function notifyMonsterOfNoise(x, z, intensity = 1) {
-  if (!monster || !monster.userData.aiInitialized) return;
-
-  const data = monster.userData;
-
-  if (data.state === MONSTER_STATE.CHASE) return;
+function canMonsterHearPlayer() {
+  if (!monster) return false;
 
   const distance = Math.hypot(
-    x - monster.position.x,
-    z - monster.position.z
+    player.x - monster.position.x,
+    player.z - monster.position.z
   );
 
-  const hearingRange = intensity > 1
+  const sprinting =
+    keys.Shift &&
+    player.stamina > 0;
+
+  const hearingDistance = sprinting
     ? MONSTER_AI.sprintHearingDistance
     : MONSTER_AI.hearingDistance;
 
-  if (distance > hearingRange) return;
-
-  data.investigationTarget = { x, z };
-
-  setMonsterState(MONSTER_STATE.INVESTIGATE);
-  setMonsterDestination(x, z);
-}
-
-/* =========================================
-   STUCK RECOVERY
-========================================= */
-
-function recoverMonsterIfStuck() {
-  const data = monster.userData;
-
-  data.stuckTimer = 0;
-  data.lastX = monster.position.x;
-  data.lastZ = monster.position.z;
-
-  if (data.state === MONSTER_STATE.CHASE) {
-    setMonsterDestination(player.x, player.z);
-    data.repathTimer = 0.15;
-    return;
-  }
-
-  if (
-    data.state === MONSTER_STATE.INVESTIGATE &&
-    data.investigationTarget
-  ) {
-    setMonsterDestination(
-      data.investigationTarget.x,
-      data.investigationTarget.z
-    );
-    return;
-  }
-
-  if (data.state === MONSTER_STATE.RETURN) {
-    setMonsterDestination(data.homeX, data.homeZ);
-    return;
-  }
-
-  data.path = [];
-  data.pathIndex = 0;
-  chooseRandomPatrolTarget();
+  return distance <= hearingDistance;
 }
 
 /* =========================================
    MONSTER MOVEMENT
 ========================================= */
 
-function getMonsterSpeed(state) {
-  switch (state) {
-    case MONSTER_STATE.CHASE:
-      return MONSTER_AI.chaseSpeed;
-
-    case MONSTER_STATE.INVESTIGATE:
-      return MONSTER_AI.investigateSpeed;
-
-    case MONSTER_STATE.SEARCH:
-      return MONSTER_AI.searchSpeed;
-
-    default:
-      return MONSTER_AI.patrolSpeed;
-  }
-}
-
-// True when the straight path from the monster to the player is clear.
-function hasClearPathToPlayer() {
-  const dx = player.x - monster.position.x;
-  const dz = player.z - monster.position.z;
-  const distance = Math.hypot(dx, dz);
-
-  if (distance < 0.001) return true;
-
-  // Check several points along the path using the monster's footprint.
-  const samples = Math.max(2, Math.ceil(distance / 0.2));
-
-  for (let i = 1; i <= samples; i++) {
-    const t = i / samples;
-    const x = monster.position.x + dx * t;
-    const z = monster.position.z + dz * t;
-
-    if (!canOccupyPosition(x, z, MONSTER_RADIUS)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// Direct pursuit avoids making the monster aim for the exact center
-// of the player's grid cell when they are already in the same corridor.
-function moveMonsterDirectlyTowardPlayer(delta) {
-  const dx = player.x - monster.position.x;
-  const dz = player.z - monster.position.z;
-  const distance = Math.hypot(dx, dz);
-
-  if (distance < 0.001) return false;
-
-  const step = Math.min(
-    getMonsterSpeed(MONSTER_STATE.CHASE) * delta,
-    distance
-  );
-
-  smoothMonsterTurn(player.x, player.z, delta);
-
-  const moved = moveEntityWithCollision(
-    monster,
-    (dx / distance) * step,
-    (dz / distance) * step,
-    MONSTER_RADIUS
-  );
-
-  return moved > 0.0005;
-}
-
 function followMonsterPath(delta) {
+  if (!monster) return false;
+
   const data = monster.userData;
 
-  // If the player is close and a straight route is clear, abandon the
-  // center-line waypoint and pursue the player's actual world position.
-  if (
-    data.state === MONSTER_STATE.CHASE &&
-    hasClearPathToPlayer()
-  ) {
-    return moveMonsterDirectlyTowardPlayer(delta);
+  if (!data.path || data.path.length === 0) {
+    return false;
   }
 
-  while (data.path && data.pathIndex < data.path.length) {
-    const waypoint = data.path[data.pathIndex];
-
-    const distance = Math.hypot(
-      waypoint.x - monster.position.x,
-      waypoint.z - monster.position.z
-    );
-
-    if (distance > MONSTER_AI.waypointDistance) break;
-
-    data.pathIndex++;
+  if (data.pathIndex >= data.path.length) {
+    return false;
   }
 
-  const waypoint = data.path && data.path[data.pathIndex];
+  const target = data.path[data.pathIndex];
 
-  if (!waypoint) return false;
-
-  const dx = waypoint.x - monster.position.x;
-  const dz = waypoint.z - monster.position.z;
+  const dx = target.x - monster.position.x;
+  const dz = target.z - monster.position.z;
   const distance = Math.hypot(dx, dz);
 
-  if (distance < 0.001) return false;
+  if (distance < MONSTER_AI.waypointDistance) {
+    data.pathIndex++;
 
-  const speed = getMonsterSpeed(data.state);
-  const step = Math.min(speed * delta, distance);
+    if (data.pathIndex >= data.path.length) {
+      data.path = [];
+      data.pathIndex = 0;
+      return false;
+    }
 
-  const moveX = (dx / distance) * step;
-  const moveZ = (dz / distance) * step;
+    return true;
+  }
 
-  smoothMonsterTurn(waypoint.x, waypoint.z, delta);
+  let speed = MONSTER_AI.patrolSpeed;
 
-  const moved = moveEntityWithCollision(
+  switch (data.state) {
+    case MONSTER_STATE.INVESTIGATE:
+      speed = MONSTER_AI.investigateSpeed;
+      break;
+
+    case MONSTER_STATE.CHASE:
+      speed = MONSTER_AI.chaseSpeed;
+      break;
+
+    case MONSTER_STATE.SEARCH:
+      speed = MONSTER_AI.searchSpeed;
+      break;
+
+    case MONSTER_STATE.RETURN:
+      speed = MONSTER_AI.patrolSpeed;
+      break;
+  }
+
+  const moveX = (dx / distance) * speed * delta;
+  const moveZ = (dz / distance) * speed * delta;
+
+  const movement = moveEntityWithCollision(
     monster,
     moveX,
     moveZ,
     MONSTER_RADIUS
   );
 
-  if (moved < 0.001) {
-    data.stuckTimer += delta;
+  if (movement > 0.001) {
+    const targetYaw = Math.atan2(dx, dz);
+    let angleDifference = targetYaw - monster.rotation.y;
+
+    while (angleDifference > Math.PI) {
+      angleDifference -= Math.PI * 2;
+    }
+
+    while (angleDifference < -Math.PI) {
+      angleDifference += Math.PI * 2;
+    }
+
+    monster.rotation.y +=
+      angleDifference *
+      Math.min(1, MONSTER_AI.turnSpeed * delta);
   }
 
-  return moved > 0.0005;
+  return movement > 0.001;
 }
 
 /* =========================================
-   MAIN MONSTER AI
+   MONSTER AI
 ========================================= */
 
-function updateMonster(delta) {
+function initializeMonsterAI() {
+  if (!monster) return;
+
+  monster.userData = {
+    state: MONSTER_STATE.PATROL,
+    stateTimer: 0,
+    path: [],
+    pathIndex: 0,
+    pathGoalX: null,
+    pathGoalZ: null,
+    repathTimer: 0,
+    patrolTargetX: null,
+    patrolTargetZ: null,
+    patrolTurnTimer: 0,
+    lastKnownPlayer: null,
+    investigationTarget: null,
+    lostSightTimer: 0,
+    homeX: monster.position.x,
+    homeZ: monster.position.z,
+    stuckTimer: 0,
+    previousX: monster.position.x,
+    previousZ: monster.position.z
+  };
+
+  chooseRandomPatrolTarget();
+}
+
+function updateMonsterAI(delta) {
   if (!monster || !started || gameOver || won) return;
 
   const data = monster.userData;
 
-  if (!data.aiInitialized) {
+  if (!data.state) {
     initializeMonsterAI();
   }
 
   data.stateTimer += delta;
   data.repathTimer -= delta;
+  data.patrolTurnTimer -= delta;
 
-  const progress = Math.hypot(
-    monster.position.x - data.lastX,
-    monster.position.z - data.lastZ
+  const distanceToPlayer = Math.hypot(
+    player.x - monster.position.x,
+    player.z - monster.position.z
   );
 
-  if (progress > MONSTER_AI.progressThreshold) {
-    data.stuckTimer = 0;
-    data.lastX = monster.position.x;
-    data.lastZ = monster.position.z;
-  } else {
-    data.stuckTimer += delta;
-  }
+  monsterDistance = distanceToPlayer;
 
-  if (data.stuckTimer >= MONSTER_AI.stuckTimeout) {
-    recoverMonsterIfStuck();
+  if (distanceToPlayer <= MONSTER_AI.catchDistance) {
+    endGame(false);
+    return;
   }
 
   const seesPlayer = canMonsterSeePlayer();
 
   if (seesPlayer) {
-    data.lastKnownPlayer = { x: player.x, z: player.z };
+    data.lastKnownPlayer = {
+      x: player.x,
+      z: player.z
+    };
+
     data.lostSightTimer = 0;
 
     if (data.state !== MONSTER_STATE.CHASE) {
@@ -1394,24 +1221,26 @@ function updateMonster(delta) {
   } else if (data.state === MONSTER_STATE.CHASE) {
     data.lostSightTimer += delta;
 
-    if (data.repathTimer <= 0 && data.lastKnownPlayer) {
-      setMonsterDestination(
-        data.lastKnownPlayer.x,
-        data.lastKnownPlayer.z
-      );
-
-      data.repathTimer = 0.4;
-    }
-
     if (data.lostSightTimer >= MONSTER_AI.loseSightTime) {
       setMonsterState(MONSTER_STATE.SEARCH);
     }
   }
 
+  if (
+    data.state !== MONSTER_STATE.CHASE &&
+    data.state !== MONSTER_STATE.SEARCH &&
+    canMonsterHearPlayer()
+  ) {
+    data.investigationTarget = {
+      x: player.x,
+      z: player.z
+    };
+
+    setMonsterState(MONSTER_STATE.INVESTIGATE);
+  }
+
   switch (data.state) {
     case MONSTER_STATE.PATROL: {
-      data.patrolTurnTimer -= delta;
-
       if (
         data.patrolTurnTimer <= 0 ||
         !data.path ||
@@ -1540,168 +1369,86 @@ function updateMonster(delta) {
     }
   }
 
-  monsterDistance = Math.hypot(
-    player.x - monster.position.x,
-    player.z - monster.position.z
+  // Detect whether the monster has stopped making progress.
+  const moved = Math.hypot(
+    monster.position.x - data.previousX,
+    monster.position.z - data.previousZ
   );
 
-  if (monsterDistance < MONSTER_AI.catchDistance) {
-    endGame(false);
+  if (moved < MONSTER_AI.progressThreshold) {
+    data.stuckTimer += delta;
+  } else {
+    data.stuckTimer = 0;
+  }
+
+  data.previousX = monster.position.x;
+  data.previousZ = monster.position.z;
+
+  if (data.stuckTimer > MONSTER_AI.stuckTimeout) {
+    data.path = [];
+    data.pathIndex = 0;
+    data.repathTimer = 0;
+    data.stuckTimer = 0;
   }
 
   if (monsterWarning) {
-    if (data.state === MONSTER_STATE.CHASE) {
-      monsterWarning.textContent = "IT FOUND YOU. RUN!";
-    } else if (data.state === MONSTER_STATE.INVESTIGATE) {
-      monsterWarning.textContent = "SOMETHING HEARD YOU...";
-    } else if (monsterDistance < 12) {
-      monsterWarning.textContent = "IT IS NEARBY";
-    } else {
-      monsterWarning.textContent = "";
-    }
+    monsterWarning.style.opacity =
+      distanceToPlayer < 12 ? "1" : "0";
+  }
+
+  if (statusText) {
+    statusText.textContent =
+      data.state === MONSTER_STATE.CHASE
+        ? "DANGER — THE CREATURE IS CHASING YOU"
+        : data.state === MONSTER_STATE.INVESTIGATE
+          ? "Something heard you..."
+          : "Explore carefully";
   }
 }
 
 /* =========================================
-   FOOTSTEP AUDIO
-========================================= */
-
-function playFootstep() {
-  if (!audioContext) return;
-
-  if (audioContext.state !== "running") {
-    audioContext.resume().catch(() => {});
-    return;
-  }
-
-  const now = audioContext.currentTime;
-  const duration = 0.11;
-
-  const sampleCount = Math.max(
-    1,
-    Math.floor(audioContext.sampleRate * duration)
-  );
-
-  const buffer = audioContext.createBuffer(
-    1,
-    sampleCount,
-    audioContext.sampleRate
-  );
-
-  const noiseData = buffer.getChannelData(0);
-
-  for (let i = 0; i < sampleCount; i++) {
-    noiseData[i] = (Math.random() * 2 - 1) * (1 - i / sampleCount);
-  }
-
-  const noise = audioContext.createBufferSource();
-  const filter = audioContext.createBiquadFilter();
-  const noiseGain = audioContext.createGain();
-
-  noise.buffer = buffer;
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(700, now);
-
-  noiseGain.gain.setValueAtTime(0.0001, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.10, now + 0.008);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-  noise.connect(filter);
-  filter.connect(noiseGain);
-  noiseGain.connect(audioContext.destination);
-
-  noise.start(now);
-  noise.stop(now + duration);
-
-  const oscillator = audioContext.createOscillator();
-  const thumpGain = audioContext.createGain();
-
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(95, now);
-  oscillator.frequency.exponentialRampToValueAtTime(42, now + duration);
-
-  thumpGain.gain.setValueAtTime(0.0001, now);
-  thumpGain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
-  thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-  oscillator.connect(thumpGain);
-  thumpGain.connect(audioContext.destination);
-
-  oscillator.start(now);
-  oscillator.stop(now + duration);
-}
-
-/* =========================================
-   START GAME
+   PLAYER INPUT
 ========================================= */
 
 function startGame() {
-  if (started) return;
+  if (started || gameOver || won) return;
 
   started = true;
-  gameOver = false;
-  won = false;
-  elapsed = 0;
-  nextFootstepTime = 0;
 
-  player.stamina = 100;
-
-  for (const key of Object.keys(keys)) {
-    keys[key] = false;
+  if (startScreen) {
+    startScreen.style.display = "none";
   }
 
-  if (audioContext && audioContext.state === "suspended") {
-    audioContext.resume().catch(() => {});
-  } else if (!audioContext) {
-    try {
-      const AudioContextClass =
-        window.AudioContext || window.webkitAudioContext;
-
-      if (AudioContextClass) {
-        audioContext = new AudioContextClass();
-        audioContext.resume().catch(() => {});
-      }
-    } catch (error) {
-      console.warn("Audio initialization failed:", error);
-    }
+  if (hud) {
+    hud.style.display = "block";
   }
 
-  if (monster) {
-    monster.userData.aiInitialized = false;
-  }
+  initializeAudio();
 
-  startScreen.classList.add("hidden");
-
-  if (errorScreen) errorScreen.classList.add("hidden");
-  if (hud) hud.classList.remove("hidden");
-
-  showMessage("Find the exit. Keep moving.");
-
-  if (renderer?.domElement.requestPointerLock) {
+  if (renderer && renderer.domElement.requestPointerLock) {
     renderer.domElement.requestPointerLock();
   }
 }
 
-/* =========================================
-   MOUSE AND KEYBOARD
-========================================= */
-
 function onPointerLockChange() {
   pointerLocked =
-    !!renderer &&
-    document.pointerLockElement === renderer.domElement;
+    document.pointerLockElement === renderer?.domElement;
 }
 
 function onMouseMove(event) {
-  if (!started || !pointerLocked || gameOver || won) return;
+  if (!started || !pointerLocked || gameOver || won || inventoryOpen) {
+    return;
+  }
 
-  player.yaw -= event.movementX * 0.002;
-  player.pitch -= event.movementY * 0.002;
+  const sensitivity = 0.002;
+
+  player.yaw -= event.movementX * sensitivity;
+  player.pitch -= event.movementY * sensitivity;
 
   player.pitch = THREE.MathUtils.clamp(
     player.pitch,
-    -1.45,
-    1.45
+    -Math.PI / 2 + 0.05,
+    Math.PI / 2 - 0.05
   );
 
   updateCamera();
@@ -1709,291 +1456,49 @@ function onMouseMove(event) {
 
 function onKeyDown(event) {
   keys[event.code] = true;
-// Toggle inventory with E.
-if (event.code === "KeyE" && !event.repeat) {
-  event.preventDefault();
-  toggleInventory();
-  return;
-}
+  keys[event.key] = true;
 
-// Number keys select quick-access slots.
-if (event.code === "Digit1" || event.code === "Digit2" || event.code === "Digit3") {
-  event.preventDefault();
-
-  selectedHotbarSlot = Number(event.code.slice(-1)) - 1;
-  updateHotbarSelection();
-  return;
-}
-
-// Ignore gameplay keyboard input while inventory is open.
-if (inventoryOpen) {
-  event.preventDefault();
-  return;
-}
-  if ([
-    "KeyW", "KeyA", "KeyS", "KeyD",
-    "ArrowUp", "ArrowDown", "ArrowLeft",
-    "ArrowRight", "Space"
-  ].includes(event.code)) {
-    event.preventDefault();
+  if (event.code === "Escape" && inventoryOpen) {
+    closeInventory();
+    return;
   }
 
   if (
-    event.code === "Escape" &&
+    event.code === "KeyE" &&
     started &&
     !gameOver &&
     !won
   ) {
-    showMessage("Click the game to resume looking around.");
+    interact();
   }
 
-  if (event.code === "KeyR" && (gameOver || won)) {
-    window.location.reload();
+  if (
+    event.code === "KeyI" &&
+    started &&
+    !gameOver &&
+    !won
+  ) {
+    toggleInventory();
+  }
+
+  if (
+    event.code.startsWith("Digit") &&
+    started &&
+    !gameOver &&
+    !won
+  ) {
+    const slot = Number(event.code.slice(5)) - 1;
+
+    if (slot >= 0 && slot < hotbarSlots.length) {
+      selectHotbarSlot(slot);
+    }
   }
 }
 
 function onKeyUp(event) {
   keys[event.code] = false;
+  keys[event.key] = false;
 }
-
-function updateHotbarSelection() {
-  hotbarSlots.forEach((slot, index) => {
-    slot.classList.toggle("selected", index === selectedHotbarSlot);
-  });
-}
-
-function openInventory() {
-  if (!started || gameOver || won || inventoryOpen) return;
-
-  inventoryOpen = true;
-  inventoryOverlay.classList.remove("hidden");
-
-  // Prevent held movement keys from continuing after closing.
-  Object.keys(keys).forEach((key) => {
-    keys[key] = false;
-  });
-
-  if (document.pointerLockElement) {
-    document.exitPointerLock();
-  }
-
-  if (typeof statusText !== "undefined" && statusText) {
-    statusText.textContent = "INVENTORY OPEN";
-  }
-}
-
-function closeInventory() {
-  if (!inventoryOpen) return;
-
-  inventoryOpen = false;
-  inventoryOverlay.classList.add("hidden");
-
-  Object.keys(keys).forEach((key) => {
-    keys[key] = false;
-  });
-
-  // Restore first-person mouse control.
-  if (started && !gameOver && !won && renderer?.domElement) {
-    renderer.domElement.requestPointerLock();
-  }
-}
-
-function toggleInventory() {
-  if (inventoryOpen) {
-    closeInventory();
-  } else {
-    openInventory();
-  }
-}
-
-// Clicking a hotbar slot selects it.
-hotbarSlots.forEach((slot, index) => {
-  slot.addEventListener("click", () => {
-    selectedHotbarSlot = index;
-    updateHotbarSelection();
-  });
-});
-
-// Clicking an inventory slot selects the corresponding quick-access slot
-// for slots 1–3. The remaining six are storage slots for future item logic.
-inventorySlots.forEach((slot, index) => {
-  slot.addEventListener("click", () => {
-    if (index < 3) {
-      selectedHotbarSlot = index;
-      updateHotbarSelection();
-    }
-  });
-});
-
-// Close button.
-inventoryCloseButton.addEventListener("click", closeInventory);
-
-// Clicking the dark area outside the inventory closes it.
-inventoryOverlay.addEventListener("click", (event) => {
-  if (event.target === inventoryOverlay) {
-    closeInventory();
-  }
-});
-
-// Initialize the default selection.
-updateHotbarSelection();
-
-/* =========================================
-   PLAYER MOVEMENT
-========================================= */
-
-function updatePlayer(delta) {
-  if (!started || gameOver || won || inventoryOpen) return;
-
-  const forwardInput =
-    keys.KeyW || keys.ArrowUp
-      ? 1
-      : keys.KeyS || keys.ArrowDown
-        ? -1
-        : 0;
-
-  const sidewaysInput =
-    keys.KeyD || keys.ArrowRight
-      ? 1
-      : keys.KeyA || keys.ArrowLeft
-        ? -1
-        : 0;
-
-  const moving = forwardInput !== 0 || sidewaysInput !== 0;
-  const sprinting = keys.ShiftLeft || keys.ShiftRight;
-
-  let speed = player.speed;
-
-  if (sprinting && moving && player.stamina > 0) {
-    speed = player.sprintSpeed;
-    player.stamina = Math.max(0, player.stamina - 25 * delta);
-  } else {
-    player.stamina = Math.min(100, player.stamina + 12 * delta);
-  }
-
-  const sin = Math.sin(player.yaw);
-  const cos = Math.cos(player.yaw);
-
-  let moveX =
-    (-sin * forwardInput + cos * sidewaysInput) * speed * delta;
-
-  let moveZ =
-    (-cos * forwardInput - sin * sidewaysInput) * speed * delta;
-
-  const inputLength = Math.hypot(forwardInput, sidewaysInput);
-
-  if (inputLength > 1) {
-    moveX *= Math.SQRT1_2;
-    moveZ *= Math.SQRT1_2;
-  }
-
-  const previousX = player.x;
-  const previousZ = player.z;
-
-  movePlayer(moveX, moveZ);
-  updateCamera();
-
-  const distanceMoved = Math.hypot(
-    player.x - previousX,
-    player.z - previousZ
-  );
-
-  if (moving && distanceMoved > 0.0005) {
-    const stepInterval = speed === player.sprintSpeed ? 0.30 : 0.45;
-    const now = performance.now() / 1000;
-
-    if (now >= nextFootstepTime) {
-      playFootstep();
-
-      notifyMonsterOfNoise(
-        player.x,
-        player.z,
-        speed === player.sprintSpeed ? 1.9 : 1.0
-      );
-
-      nextFootstepTime = now + stepInterval;
-    }
-  } else {
-    nextFootstepTime = 0;
-  }
-
-  if (statusText && !gameOver && !won) {
-    statusText.textContent = `STAMINA: ${Math.round(player.stamina)}%`;
-  }
-
-  const exit = scene.userData.exit;
-
-  if (
-    exit &&
-    Math.hypot(
-      player.x - exit.position.x,
-      player.z - exit.position.z
-    ) < 2
-  ) {
-    endGame(true);
-  }
-}
-
-/* =========================================
-   MESSAGES AND GAME STATE
-========================================= */
-
-function showMessage(text) {
-  if (!messageText) return;
-
-  messageText.textContent = text;
-  messageTimer = 3;
-}
-
-function endGame(success) {
-  if (gameOver || won) return;
-
-  if (success) {
-    won = true;
-    showMessage("YOU ESCAPED... FOR NOW.");
-
-    if (statusText) statusText.textContent = "EXIT FOUND";
-  } else {
-    gameOver = true;
-    showMessage("IT FOUND YOU.");
-
-    if (statusText) statusText.textContent = "YOU WERE CAUGHT";
-  }
-
-  if (monsterWarning) monsterWarning.textContent = "";
-
-  setTimeout(() => {
-    if (startScreen) startScreen.classList.remove("hidden");
-
-    if (startButton) {
-      startButton.textContent = success ? "PLAY AGAIN" : "TRY AGAIN";
-    }
-
-    if (hud) hud.classList.add("hidden");
-
-    document.exitPointerLock?.();
-    started = false;
-  }, 1800);
-}
-
-function showError(error) {
-  console.error("Backrooms initialization error:", error);
-
-  if (errorMessage) {
-    errorMessage.textContent =
-      "The game could not initialize. Check the browser console for the error.";
-  }
-
-  if (errorScreen) {
-    errorScreen.classList.remove("hidden");
-  } else {
-    alert("The Backrooms game could not initialize. Check the browser console.");
-  }
-}
-
-/* =========================================
-   RESIZE AND MAIN LOOP
-========================================= */
 
 function onResize() {
   if (!camera || !renderer) return;
@@ -2004,29 +1509,279 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+/* =========================================
+   INVENTORY
+========================================= */
+
+function toggleInventory() {
+  if (!inventoryOverlay) return;
+
+  inventoryOpen = !inventoryOpen;
+
+  inventoryOverlay.style.display =
+    inventoryOpen ? "flex" : "none";
+
+  if (inventoryOpen && document.pointerLockElement) {
+    document.exitPointerLock();
+  } else if (
+    !inventoryOpen &&
+    started &&
+    renderer?.domElement.requestPointerLock
+  ) {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+function closeInventory() {
+  inventoryOpen = false;
+
+  if (inventoryOverlay) {
+    inventoryOverlay.style.display = "none";
+  }
+
+  if (
+    started &&
+    !gameOver &&
+    !won &&
+    renderer?.domElement.requestPointerLock
+  ) {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+function selectHotbarSlot(index) {
+  if (index < 0 || index >= hotbarSlots.length) return;
+
+  selectedHotbarSlot = index;
+
+  hotbarSlots.forEach((slot, i) => {
+    slot.classList.toggle("selected", i === index);
+  });
+}
+
+function interact() {
+  // Reserved for world interactions such as pickups and doors.
+}
+
+if (inventoryCloseButton) {
+  inventoryCloseButton.addEventListener("click", closeInventory);
+}
+
+if (inventoryOverlay) {
+  inventoryOverlay.addEventListener("click", event => {
+    if (event.target === inventoryOverlay) {
+      closeInventory();
+    }
+  });
+}
+
+hotbarSlots.forEach((slot, index) => {
+  slot.addEventListener("click", () => {
+    selectHotbarSlot(index);
+  });
+});
+
+/* =========================================
+   AUDIO
+========================================= */
+
+function initializeAudio() {
+  if (audioContext) {
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+    return;
+  }
+
+  const AudioContextClass =
+    window.AudioContext || window.webkitAudioContext;
+
+  if (!AudioContextClass) return;
+
+  audioContext = new AudioContextClass();
+}
+
+function playTone(frequency, duration, volume = 0.04) {
+  if (!audioContext) return;
+
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.value = frequency;
+
+  gain.gain.setValueAtTime(volume, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    audioContext.currentTime + duration
+  );
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + duration);
+}
+
+function updateAudio() {
+  if (!audioContext || !monster) return;
+
+  if (monsterDistance < 10) {
+    const frequency = 60 + (10 - monsterDistance) * 12;
+    playTone(frequency, 0.08, 0.012);
+  }
+}
+
+/* =========================================
+   GAME OVER / WIN
+========================================= */
+
+function endGame(playerWon) {
+  if (gameOver || won) return;
+
+  if (playerWon) {
+    won = true;
+  } else {
+    gameOver = true;
+  }
+
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+
+  const title = playerWon ? "YOU ESCAPED" : "YOU WERE CAUGHT";
+  const description = playerWon
+    ? "You found the exit."
+    : "The creature caught up with you.";
+
+  if (errorScreen) {
+    errorScreen.style.display = "flex";
+
+    if (errorMessage) {
+      errorMessage.textContent = `${title} — ${description}`;
+    }
+  } else {
+    alert(`${title}\n${description}`);
+  }
+}
+
+/* =========================================
+   ERROR HANDLING
+========================================= */
+
+function showError(error) {
+  console.error("Game initialization error:", error);
+
+  if (errorScreen) {
+    errorScreen.style.display = "flex";
+  }
+
+  if (errorMessage) {
+    errorMessage.textContent =
+      error?.message || "An unexpected error occurred.";
+  }
+}
+
+/* =========================================
+   MAIN UPDATE
+========================================= */
+
+function updatePlayer(delta) {
+  if (!started || gameOver || won || inventoryOpen) return;
+
+  let forward = 0;
+  let strafe = 0;
+
+  if (keys.KeyW || keys.w || keys.ArrowUp) forward += 1;
+  if (keys.KeyS || keys.s || keys.ArrowDown) forward -= 1;
+  if (keys.KeyA || keys.a || keys.ArrowLeft) strafe -= 1;
+  if (keys.KeyD || keys.d || keys.ArrowRight) strafe += 1;
+
+  const inputLength = Math.hypot(forward, strafe);
+
+  if (inputLength > 0) {
+    forward /= inputLength;
+    strafe /= inputLength;
+  }
+
+  const wantsSprint =
+    (keys.ShiftLeft || keys.ShiftRight || keys.Shift) &&
+    player.stamina > 0 &&
+    forward > 0;
+
+  const speed = wantsSprint
+    ? player.sprintSpeed
+    : player.speed;
+
+  if (wantsSprint) {
+    player.stamina = Math.max(0, player.stamina - 25 * delta);
+  } else {
+    player.stamina = Math.min(100, player.stamina + 16 * delta);
+  }
+
+  const sinYaw = Math.sin(player.yaw);
+  const cosYaw = Math.cos(player.yaw);
+
+  const dx =
+    (strafe * cosYaw + forward * sinYaw) * speed * delta;
+
+  const dz =
+    (forward * cosYaw - strafe * sinYaw) * speed * delta;
+
+  if (inputLength > 0) {
+    movePlayer(dx, dz);
+
+    if (elapsed >= nextFootstepTime) {
+      playTone(80 + Math.random() * 30, 0.04, 0.008);
+      nextFootstepTime = elapsed + (wantsSprint ? 0.28 : 0.45);
+    }
+  }
+
+  updateCamera();
+
+  const exit = scene?.userData?.exit;
+
+  if (exit) {
+    const distanceToExit = Math.hypot(
+      player.x - exit.position.x,
+      player.z - exit.position.z
+    );
+
+    if (distanceToExit < 2) {
+      endGame(true);
+    }
+  }
+
+  const staminaBar = document.getElementById("stamina-fill");
+
+  if (staminaBar) {
+    staminaBar.style.width = `${player.stamina}%`;
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
 
   if (!renderer || !scene || !camera || !clock) return;
 
   const delta = Math.min(clock.getDelta(), 0.05);
-
-  if (monsterMixer) {
-    monsterMixer.update(delta);
-  }
+  elapsed += delta;
 
   if (started && !gameOver && !won) {
-    elapsed += delta;
-
     updatePlayer(delta);
-    updateMonster(delta);
+    updateMonsterAI(delta);
+    updateAudio();
 
-    if (messageTimer > 0) {
-      messageTimer -= delta;
+    if (monsterMixer) {
+      monsterMixer.update(delta);
+    }
+  }
 
-      if (messageTimer <= 0 && messageText) {
-        messageText.textContent = "";
-      }
+  if (messageTimer > 0) {
+    messageTimer -= delta;
+
+    if (messageTimer <= 0 && messageText) {
+      messageText.style.display = "none";
     }
   }
 
@@ -2034,7 +1789,7 @@ function animate() {
 }
 
 /* =========================================
-   START
+   START THE GAME
 ========================================= */
 
 initialize();
