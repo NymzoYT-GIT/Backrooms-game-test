@@ -575,3 +575,134 @@ h1 {
   color: rgba(231, 221, 188, 0.80) !important;
   border-color: rgba(190, 174, 119, 0.30) !important;
 }
+/* ==========================================
+   CLASSIC BACKROOMS HORROR GUI
+   Dirty yellow • Faded beige • Transparent
+   ========================================== */
+
+:root {
+  --horror-yellow: #b6a66b;
+  --horror-beige: #d2c9a5;
+  --horror-muted: #89805e;
+  --horror-border: rgba(190, 174, 119, 0.25);
+  --horror-glass: rgba(20, 18, 10, 0.38);
+}
+
+/* HOTBAR CONTAINER */
+.hotbar {
+  background: rgba(15, 14, 8, 0.24) !important;
+  border: 1px solid var(--horror-border) !important;
+  border-radius: 2px !important;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* HOTBAR LABEL */
+.hotbar-label {
+  color: var(--horror-muted) !important;
+  letter-spacing: 3px !important;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px #000;
+}
+
+/* HOTBAR SLOTS */
+.hotbar-slot {
+  background: rgba(20, 18, 10, 0.18) !important;
+  border: 1px solid rgba(190, 174, 119, 0.23) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.hotbar-slot.selected {
+  background: rgba(182, 166, 107, 0.16) !important;
+  border-color: rgba(210, 194, 132, 0.65) !important;
+  box-shadow: inset 0 0 8px rgba(182, 166, 107, 0.08) !important;
+}
+
+.hotbar-number {
+  color: var(--horror-beige) !important;
+  opacity: 0.72;
+}
+
+/* INVENTORY BACKDROP
+   Keeps the world visible behind the menu. */
+.inventory-overlay {
+  background: rgba(0, 0, 0, 0.24) !important;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+}
+
+/* INVENTORY WINDOW */
+.inventory-window {
+  background: rgba(20, 18, 10, 0.48) !important;
+  border: 1px solid rgba(190, 174, 119, 0.30) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 8px 35px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* INVENTORY HEADER */
+.inventory-header h2 {
+  color: var(--horror-beige) !important;
+  letter-spacing: 5px !important;
+  text-shadow: 0 1px 4px #000;
+}
+
+.inventory-eyebrow {
+  color: var(--horror-muted) !important;
+  letter-spacing: 3px !important;
+}
+
+/* DIVIDER */
+.inventory-divider {
+  background: rgba(190, 174, 119, 0.24) !important;
+}
+
+/* INVENTORY SLOTS */
+.inventory-slot {
+  background: rgba(15, 14, 8, 0.20) !important;
+  border: 1px solid rgba(190, 174, 119, 0.23) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.inventory-slot:hover {
+  background: rgba(182, 166, 107, 0.13) !important;
+  border-color: rgba(210, 194, 132, 0.60) !important;
+}
+
+/* SLOT NUMBERS */
+.slot-number {
+  color: var(--horror-beige) !important;
+  opacity: 0.45;
+}
+
+/* INVENTORY FOOTER */
+.inventory-footer {
+  color: var(--horror-muted) !important;
+  letter-spacing: 1px;
+}
+
+.inventory-footer kbd {
+  background: rgba(15, 14, 8, 0.35) !important;
+  color: var(--horror-beige) !important;
+  border: 1px solid var(--horror-border) !important;
+  border-radius: 2px !important;
+}
+
+/* CLOSE BUTTON */
+.inventory-close {
+  background: rgba(15, 14, 8, 0.25) !important;
+  color: var(--horror-beige) !important;
+  border: 1px solid var(--horror-border) !important;
+  border-radius: 2px !important;
+}
+
+.inventory-close:hover {
+  background: rgba(110, 35, 25, 0.30) !important;
+  border-color: rgba(160, 75, 55, 0.55) !important;
+}
