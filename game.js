@@ -1472,14 +1472,9 @@ function onKeyDown(event) {
     interact();
   }
 
-  if (
-    event.code === "KeyI" &&
-    started &&
-    !gameOver &&
-    !won
-  ) {
-    toggleInventory();
-  }
+if (event.code === "AltLeft" && started && !gameOver && !won) {
+  toggleInventory();
+}
 
   if (
     event.code.startsWith("Digit") &&
