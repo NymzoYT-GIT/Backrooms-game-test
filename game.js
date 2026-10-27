@@ -21,9 +21,11 @@ const GRID_SIZE = 31;
 const WALL_HEIGHT = 4;
 const PLAYER_HEIGHT = 1.7;
 
-// Collision radius for the player and monster.
 const PLAYER_RADIUS = 0.32;
 const MONSTER_RADIUS = 0.42;
+
+// Extra space kept between a moving character and a wall.
+const WALL_MARGIN = 0.035;
 
 let scene = null;
 let camera = null;
@@ -235,14 +237,12 @@ function generateMaze() {
     stack.push({ x: nx, z: nz });
   }
 
-  // Open an area around the exit.
   for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
     for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
       maze[z][x] = 0;
     }
   }
 
-  // Connect the maze to the exit.
   for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
     maze[GRID_SIZE - 3][x] = 0;
   }
@@ -266,7 +266,10 @@ function buildWorld() {
   const wallMaterial = new THREE.MeshStandardMaterial({
     map: wallTexture,
     color: 0xc4b66d,
-    roughness: 0.96
+    roughness: 0.96,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true
   });
 
   const floorMaterial = new THREE.MeshStandardMaterial({
@@ -379,42 +382,64 @@ function isGridBlocked(x, z) {
   return !maze[z] || maze[z][x] !== 0;
 }
 
-// This function takes WORLD coordinates, not grid coordinates.
 function isBlocked(x, z) {
   const grid = worldToGrid(x, z);
   return isGridBlocked(grid.x, grid.z);
 }
 
-// Collision checks account for the character's radius.
-// Sampling around the body stops characters clipping into wall corners.
-function canOccupyPosition(x, z, radius = MONSTER_RADIUS) {
-  const checks = [
-    [0, 0],
-    [-radius, 0],
-    [radius, 0],
-    [0, -radius],
-    [0, radius],
-    [-radius * 0.7, -radius * 0.7],
-    [radius * 0.7, -radius * 0.7],
-    [-radius * 0.7, radius * 0.7],
-    [radius * 0.7, radius * 0.7]
-  ];
+/* =========================================
+   ACCURATE CIRCLE-TO-WALL COLLISION
+========================================= */
 
-  return checks.every(([dx, dz]) => !isBlocked(x + dx, z + dz));
+// Test a character's circular footprint against each nearby wall cell.
+// This allows movement throughout the corridor while keeping the body
+// a small, consistent distance from walls.
+function canOccupyPosition(x, z, radius = PLAYER_RADIUS) {
+  const safeRadius = radius + WALL_MARGIN;
+  const grid = worldToGrid(x, z);
+
+  const cellsToCheck = Math.ceil(safeRadius / CELL) + 1;
+
+  for (let gz = grid.z - cellsToCheck; gz <= grid.z + cellsToCheck; gz++) {
+    for (let gx = grid.x - cellsToCheck; gx <= grid.x + cellsToCheck; gx++) {
+      if (!isGridBlocked(gx, gz)) continue;
+
+      // Walls are square boxes centered on grid cell centers.
+      const wallCenter = gridToWorld(gx, gz);
+
+      const minX = wallCenter.x - CELL / 2;
+      const maxX = wallCenter.x + CELL / 2;
+      const minZ = wallCenter.z - CELL / 2;
+      const maxZ = wallCenter.z + CELL / 2;
+
+      const closestX = THREE.MathUtils.clamp(x, minX, maxX);
+      const closestZ = THREE.MathUtils.clamp(z, minZ, maxZ);
+
+      const distanceX = x - closestX;
+      const distanceZ = z - closestZ;
+
+      if (
+        distanceX * distanceX + distanceZ * distanceZ <
+        safeRadius * safeRadius
+      ) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /* =========================================
    SAFE MOVEMENT WITH WALL SLIDING
 ========================================= */
 
-function moveEntityWithCollision(entity, dx, dz, radius = MONSTER_RADIUS) {
+function moveEntityWithCollision(entity, dx, dz, radius = PLAYER_RADIUS) {
   const startX = entity.position.x;
   const startZ = entity.position.z;
 
   const distance = Math.hypot(dx, dz);
-
-  // Substeps stop fast movement from skipping over wall edges.
-  const substeps = Math.max(1, Math.ceil(distance / 0.12));
+  const substeps = Math.max(1, Math.ceil(distance / 0.10));
   const stepX = dx / substeps;
   const stepZ = dz / substeps;
 
@@ -422,21 +447,28 @@ function moveEntityWithCollision(entity, dx, dz, radius = MONSTER_RADIUS) {
     const nextX = entity.position.x + stepX;
     const nextZ = entity.position.z + stepZ;
 
-    // Try the full movement first.
+    // Prefer direct movement if the full circular footprint is clear.
     if (canOccupyPosition(nextX, nextZ, radius)) {
       entity.position.x = nextX;
       entity.position.z = nextZ;
       continue;
     }
 
-    // Slide along walls by testing each axis separately.
-    if (canOccupyPosition(nextX, entity.position.z, radius)) {
-      entity.position.x = nextX;
-    }
+    // Otherwise slide along the wall using separate axis checks.
+    const canMoveX = canOccupyPosition(
+      nextX,
+      entity.position.z,
+      radius
+    );
 
-    if (canOccupyPosition(entity.position.x, nextZ, radius)) {
-      entity.position.z = nextZ;
-    }
+    const canMoveZ = canOccupyPosition(
+      entity.position.x,
+      nextZ,
+      radius
+    );
+
+    if (canMoveX) entity.position.x = nextX;
+    if (canMoveZ) entity.position.z = nextZ;
   }
 
   return Math.hypot(
@@ -471,7 +503,6 @@ function updateCamera() {
 }
 
 function movePlayer(dx, dz) {
-  // Use the same collision system as the monster.
   const playerBody = {
     position: { x: player.x, z: player.z }
   };
@@ -494,7 +525,6 @@ function movePlayer(dx, dz) {
 function createMonster() {
   monster = new THREE.Group();
 
-  // Temporary placeholder if the model fails to load.
   const body = new THREE.Mesh(
     new THREE.CapsuleGeometry(0.55, 1.1, 4, 8),
     new THREE.MeshStandardMaterial({
@@ -785,19 +815,26 @@ const MONSTER_AI = {
   progressThreshold: 0.015,
 
   chaseRepathInterval: 0.25,
-  waypointDistance: 0.5
+  waypointDistance: 0.5,
+
+  // Distance from the player's position at which the monster
+  // begins steering directly toward them when a direct route is clear.
+  directChaseDistance: 7
 };
 
 /* =========================================
    DESTINATION HELPERS
 ========================================= */
 
-// Return a valid open grid cell near a world position.
 function findNearestOpenCell(worldX, worldZ, maxRadius = 6) {
   const grid = worldToGrid(worldX, worldZ);
 
-  if (grid.x < 0 || grid.z < 0 ||
-      grid.x >= GRID_SIZE || grid.z >= GRID_SIZE) {
+  if (
+    grid.x < 0 ||
+    grid.z < 0 ||
+    grid.x >= GRID_SIZE ||
+    grid.z >= GRID_SIZE
+  ) {
     return null;
   }
 
@@ -843,7 +880,6 @@ function setMonsterDestination(worldX, worldZ) {
     return false;
   }
 
-  // If the monster's current cell is invalid, use a nearby open cell.
   let startX = start.x;
   let startZ = start.z;
 
@@ -868,8 +904,6 @@ function setMonsterDestination(worldX, worldZ) {
 
   if (path.length > 0) {
     data.path = path;
-
-    // Skip the starting cell when the path contains multiple cells.
     data.pathIndex = path.length > 1 ? 1 : 0;
     data.pathGoalX = goal.x;
     data.pathGoalZ = goal.z;
@@ -880,7 +914,6 @@ function setMonsterDestination(worldX, worldZ) {
 
   data.path = [];
   data.pathIndex = 0;
-
   return false;
 }
 
@@ -908,8 +941,6 @@ function chooseRandomPatrolTarget() {
 
     if (path.length < 2) continue;
 
-    // IMPORTANT: path waypoints are ALREADY world coordinates.
-    // Do not pass them into gridToWorld() again.
     data.path = path;
     data.pathIndex = 1;
 
@@ -1117,7 +1148,6 @@ function recoverMonsterIfStuck() {
   data.lastZ = monster.position.z;
 
   if (data.state === MONSTER_STATE.CHASE) {
-    // Re-route toward the player's latest position.
     setMonsterDestination(player.x, player.z);
     data.repathTimer = 0.15;
     return;
@@ -1139,7 +1169,6 @@ function recoverMonsterIfStuck() {
     return;
   }
 
-  // For patrol/search, pick a completely new open destination.
   data.path = [];
   data.pathIndex = 0;
   chooseRandomPatrolTarget();
@@ -1165,11 +1194,68 @@ function getMonsterSpeed(state) {
   }
 }
 
+// True when the straight path from the monster to the player is clear.
+function hasClearPathToPlayer() {
+  const dx = player.x - monster.position.x;
+  const dz = player.z - monster.position.z;
+  const distance = Math.hypot(dx, dz);
+
+  if (distance < 0.001) return true;
+
+  // Check several points along the path using the monster's footprint.
+  const samples = Math.max(2, Math.ceil(distance / 0.2));
+
+  for (let i = 1; i <= samples; i++) {
+    const t = i / samples;
+    const x = monster.position.x + dx * t;
+    const z = monster.position.z + dz * t;
+
+    if (!canOccupyPosition(x, z, MONSTER_RADIUS)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Direct pursuit avoids making the monster aim for the exact center
+// of the player's grid cell when they are already in the same corridor.
+function moveMonsterDirectlyTowardPlayer(delta) {
+  const dx = player.x - monster.position.x;
+  const dz = player.z - monster.position.z;
+  const distance = Math.hypot(dx, dz);
+
+  if (distance < 0.001) return false;
+
+  const step = Math.min(
+    getMonsterSpeed(MONSTER_STATE.CHASE) * delta,
+    distance
+  );
+
+  smoothMonsterTurn(player.x, player.z, delta);
+
+  const moved = moveEntityWithCollision(
+    monster,
+    (dx / distance) * step,
+    (dz / distance) * step,
+    MONSTER_RADIUS
+  );
+
+  return moved > 0.0005;
+}
+
 function followMonsterPath(delta) {
   const data = monster.userData;
-  let moving = false;
 
-  // Skip waypoints that have already been reached.
+  // If the player is close and a straight route is clear, abandon the
+  // center-line waypoint and pursue the player's actual world position.
+  if (
+    data.state === MONSTER_STATE.CHASE &&
+    hasClearPathToPlayer()
+  ) {
+    return moveMonsterDirectlyTowardPlayer(delta);
+  }
+
   while (data.path && data.pathIndex < data.path.length) {
     const waypoint = data.path[data.pathIndex];
 
@@ -1193,8 +1279,6 @@ function followMonsterPath(delta) {
 
   if (distance < 0.001) return false;
 
-  moving = true;
-
   const speed = getMonsterSpeed(data.state);
   const step = Math.min(speed * delta, distance);
 
@@ -1210,12 +1294,11 @@ function followMonsterPath(delta) {
     MONSTER_RADIUS
   );
 
-  // If collision stopped movement, allow the AI to re-route.
   if (moved < 0.001) {
     data.stuckTimer += delta;
   }
 
-  return moving;
+  return moved > 0.0005;
 }
 
 /* =========================================
@@ -1234,7 +1317,6 @@ function updateMonster(delta) {
   data.stateTimer += delta;
   data.repathTimer -= delta;
 
-  // Detect whether the monster is making progress.
   const progress = Math.hypot(
     monster.position.x - data.lastX,
     monster.position.z - data.lastZ
@@ -1252,7 +1334,6 @@ function updateMonster(delta) {
     recoverMonsterIfStuck();
   }
 
-  // Visibility transitions.
   const seesPlayer = canMonsterSeePlayer();
 
   if (seesPlayer) {
@@ -1265,12 +1346,12 @@ function updateMonster(delta) {
   } else if (data.state === MONSTER_STATE.CHASE) {
     data.lostSightTimer += delta;
 
-    // Keep moving toward the last position while sight is lost.
     if (data.repathTimer <= 0 && data.lastKnownPlayer) {
       setMonsterDestination(
         data.lastKnownPlayer.x,
         data.lastKnownPlayer.z
       );
+
       data.repathTimer = 0.4;
     }
 
@@ -1325,15 +1406,18 @@ function updateMonster(delta) {
     }
 
     case MONSTER_STATE.CHASE: {
-      // Update the route frequently so the monster follows the player,
-      // including when the player changes position along a wall.
       if (data.repathTimer <= 0) {
         const playerGrid = worldToGrid(player.x, player.z);
 
-        const currentGoal = data.pathGoalX === playerGrid.x &&
+        const currentGoal =
+          data.pathGoalX === playerGrid.x &&
           data.pathGoalZ === playerGrid.z;
 
-        if (!currentGoal || !data.path || data.pathIndex >= data.path.length) {
+        if (
+          !currentGoal ||
+          !data.path ||
+          data.pathIndex >= data.path.length
+        ) {
           setMonsterDestination(player.x, player.z);
         }
 
@@ -1408,7 +1492,6 @@ function updateMonster(delta) {
     }
   }
 
-  // Catch the player based on actual world-space distance.
   monsterDistance = Math.hypot(
     player.x - monster.position.x,
     player.z - monster.position.z
@@ -1535,7 +1618,6 @@ function startGame() {
     }
   }
 
-  // Reset the monster's AI for a fresh game.
   if (monster) {
     monster.userData.aiInitialized = false;
   }
