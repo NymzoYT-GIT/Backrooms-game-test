@@ -237,3 +237,258 @@ h1 {
     font-size: 12px;
   }
 }
+/* =========================================
+   HOTBAR
+========================================= */
+
+.hotbar {
+  position: fixed;
+  right: 34px;
+  bottom: 34px;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  padding: 12px;
+  background: rgba(5, 11, 24, 0.88);
+  border: 1px solid rgba(8, 217, 244, 0.48);
+  border-radius: 12px;
+
+  box-shadow:
+    0 0 24px rgba(8, 217, 244, 0.08),
+    inset 0 0 18px rgba(8, 217, 244, 0.025);
+
+  backdrop-filter: blur(10px);
+}
+
+.hotbar-label {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+
+  color: #8daec8;
+  font: 700 10px/1.2 Arial, sans-serif;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
+.hotbar-slot {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+
+  background: rgba(10, 24, 43, 0.92);
+  border: 1px solid #24435d;
+  border-radius: 7px;
+
+  color: #eef7ff;
+  cursor: pointer;
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.hotbar-slot:hover {
+  background: rgba(8, 217, 244, 0.12);
+  border-color: #08d9f4;
+}
+
+.hotbar-slot.selected {
+  background: rgba(8, 217, 244, 0.13);
+  border-color: #08d9f4;
+  box-shadow:
+    0 0 12px rgba(8, 217, 244, 0.18),
+    inset 0 0 12px rgba(8, 217, 244, 0.07);
+}
+
+.hotbar-number {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+
+  color: #8faec8;
+  font: 700 11px Arial, sans-serif;
+}
+
+.hotbar-slot.selected .hotbar-number {
+  color: #08d9f4;
+}
+
+/* =========================================
+   INVENTORY OVERLAY
+========================================= */
+
+.inventory-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+  background: rgba(1, 5, 13, 0.72);
+  backdrop-filter: blur(7px);
+}
+
+.inventory-overlay.hidden {
+  display: none !important;
+}
+
+.inventory-window {
+  width: min(420px, 100%);
+  padding: 24px;
+
+  background: rgba(5, 13, 29, 0.97);
+  border: 1px solid rgba(8, 217, 244, 0.58);
+  border-radius: 14px;
+
+  box-shadow:
+    0 0 45px rgba(8, 217, 244, 0.1),
+    0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.inventory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.inventory-eyebrow {
+  margin-bottom: 6px;
+  color: #08d9f4;
+  font: 700 10px Arial, sans-serif;
+  letter-spacing: 3px;
+}
+
+.inventory-header h2 {
+  margin: 0;
+  color: #eef7ff;
+  font: 800 25px/1.2 Arial, sans-serif;
+  letter-spacing: 2px;
+}
+
+.inventory-close {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+
+  background: rgba(255, 65, 90, 0.08);
+  border: 1px solid rgba(255, 65, 90, 0.4);
+  border-radius: 7px;
+
+  color: #ff647b;
+  font: 28px/1 Arial, sans-serif;
+  cursor: pointer;
+}
+
+.inventory-close:hover {
+  background: rgba(255, 65, 90, 0.2);
+  border-color: #ff647b;
+}
+
+.inventory-divider {
+  height: 1px;
+  margin: 20px 0;
+
+  background: linear-gradient(
+    90deg,
+    rgba(8, 217, 244, 0.65),
+    rgba(8, 217, 244, 0.04)
+  );
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inventory-slot {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-width: 0;
+  padding: 0;
+
+  background: rgba(11, 26, 46, 0.9);
+  border: 1px solid #24435d;
+  border-radius: 8px;
+
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.inventory-slot:hover {
+  background: rgba(8, 217, 244, 0.1);
+  border-color: #08d9f4;
+  box-shadow: inset 0 0 15px rgba(8, 217, 244, 0.06);
+}
+
+.slot-number {
+  position: absolute;
+  top: 9px;
+  left: 10px;
+
+  color: #64839e;
+  font: 700 11px Arial, sans-serif;
+}
+
+.inventory-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-top: 20px;
+  color: #7897b3;
+  font: 700 9px Arial, sans-serif;
+  letter-spacing: 1px;
+}
+
+.inventory-footer kbd {
+  display: inline-block;
+  margin: 0 3px;
+  padding: 3px 6px;
+
+  background: #10263d;
+  border: 1px solid #31516b;
+  border-radius: 4px;
+
+  color: #08d9f4;
+  font: inherit;
+}
+
+/* Keep the interface usable on narrow screens. */
+
+@media (max-width: 520px) {
+  .hotbar {
+    right: 16px;
+    bottom: 16px;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .hotbar-slot {
+    width: 48px;
+    height: 48px;
+  }
+
+  .inventory-window {
+    padding: 18px;
+  }
+
+  .inventory-grid {
+    gap: 8px;
+  }
+}
