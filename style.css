@@ -492,3 +492,86 @@ h1 {
     gap: 8px;
   }
 }
+/* ===== TRANSPARENT HORROR HOTBAR ===== */
+.hotbar {
+  background: rgba(10, 9, 5, 0.28) !important;
+  border: 1px solid rgba(190, 174, 119, 0.22) !important;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+.hotbar-label {
+  color: rgba(220, 208, 164, 0.65) !important;
+}
+
+.hotbar-slot {
+  background: rgba(8, 8, 5, 0.20) !important;
+  border: 1px solid rgba(190, 174, 119, 0.28) !important;
+  box-shadow: none !important;
+}
+
+.hotbar-slot.selected {
+  background: rgba(164, 145, 83, 0.20) !important;
+  border-color: rgba(218, 198, 126, 0.65) !important;
+  box-shadow: inset 0 0 8px rgba(180, 158, 91, 0.10) !important;
+}
+
+.hotbar-number {
+  color: rgba(232, 224, 193, 0.75) !important;
+}
+
+
+/* ===== TRANSPARENT INVENTORY OVERLAY ===== */
+.inventory-overlay {
+  background: rgba(0, 0, 0, 0.28) !important;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+}
+
+
+/* ===== TRANSPARENT INVENTORY WINDOW ===== */
+.inventory-window {
+  background: rgba(12, 11, 7, 0.58) !important;
+  border: 1px solid rgba(190, 174, 119, 0.30) !important;
+  box-shadow: 0 8px 35px rgba(0, 0, 0, 0.20) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.inventory-header h2 {
+  color: rgba(231, 221, 188, 0.90) !important;
+}
+
+.inventory-eyebrow {
+  color: rgba(191, 178, 132, 0.70) !important;
+}
+
+.inventory-divider {
+  background: rgba(190, 174, 119, 0.25) !important;
+}
+
+.inventory-slot {
+  background: rgba(8, 8, 5, 0.25) !important;
+  border: 1px solid rgba(190, 174, 119, 0.28) !important;
+  box-shadow: none !important;
+}
+
+.inventory-slot:hover {
+  background: rgba(164, 145, 83, 0.18) !important;
+  border-color: rgba(218, 198, 126, 0.60) !important;
+}
+
+.slot-number {
+  color: rgba(220, 208, 164, 0.55) !important;
+}
+
+.inventory-footer {
+  color: rgba(191, 178, 132, 0.65) !important;
+}
+
+.inventory-close {
+  background: rgba(8, 8, 5, 0.25) !important;
+  color: rgba(231, 221, 188, 0.80) !important;
+  border-color: rgba(190, 174, 119, 0.30) !important;
+}
