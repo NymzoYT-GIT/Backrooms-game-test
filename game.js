@@ -37,6 +37,15 @@ let gameOver = false;
 let won = false;
 let pointerLocked = false;
 
+// Inventory and hotbar state
+let inventoryOpen = false;
+let selectedHotbarSlot = 0;
+
+const hotbarSlots = document.querySelectorAll(".hotbar-slot");
+const inventorySlots = document.querySelectorAll(".inventory-slot");
+const inventoryOverlay = document.getElementById("inventory-overlay");
+const inventoryCloseButton = document.getElementById("inventory-close");
+
 let maze = [];
 let walls = [];
 let monster = null;
@@ -1661,7 +1670,27 @@ function onMouseMove(event) {
 
 function onKeyDown(event) {
   keys[event.code] = true;
+// Toggle inventory with E.
+if (event.code === "KeyE" && !event.repeat) {
+  event.preventDefault();
+  toggleInventory();
+  return;
+}
 
+// Number keys select quick-access slots.
+if (event.code === "Digit1" || event.code === "Digit2" || event.code === "Digit3") {
+  event.preventDefault();
+
+  selectedHotbarSlot = Number(event.code.slice(-1)) - 1;
+  updateHotbarSelection();
+  return;
+}
+
+// Ignore gameplay keyboard input while inventory is open.
+if (inventoryOpen) {
+  event.preventDefault();
+  return;
+}
   if ([
     "KeyW", "KeyA", "KeyS", "KeyD",
     "ArrowUp", "ArrowDown", "ArrowLeft",
@@ -1688,12 +1717,94 @@ function onKeyUp(event) {
   keys[event.code] = false;
 }
 
+function updateHotbarSelection() {
+  hotbarSlots.forEach((slot, index) => {
+    slot.classList.toggle("selected", index === selectedHotbarSlot);
+  });
+}
+
+function openInventory() {
+  if (!started || gameOver || won || inventoryOpen) return;
+
+  inventoryOpen = true;
+  inventoryOverlay.classList.remove("hidden");
+
+  // Prevent held movement keys from continuing after closing.
+  Object.keys(keys).forEach((key) => {
+    keys[key] = false;
+  });
+
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+
+  if (typeof statusText !== "undefined" && statusText) {
+    statusText.textContent = "INVENTORY OPEN";
+  }
+}
+
+function closeInventory() {
+  if (!inventoryOpen) return;
+
+  inventoryOpen = false;
+  inventoryOverlay.classList.add("hidden");
+
+  Object.keys(keys).forEach((key) => {
+    keys[key] = false;
+  });
+
+  // Restore first-person mouse control.
+  if (started && !gameOver && !won && renderer?.domElement) {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+function toggleInventory() {
+  if (inventoryOpen) {
+    closeInventory();
+  } else {
+    openInventory();
+  }
+}
+
+// Clicking a hotbar slot selects it.
+hotbarSlots.forEach((slot, index) => {
+  slot.addEventListener("click", () => {
+    selectedHotbarSlot = index;
+    updateHotbarSelection();
+  });
+});
+
+// Clicking an inventory slot selects the corresponding quick-access slot
+// for slots 1–3. The remaining six are storage slots for future item logic.
+inventorySlots.forEach((slot, index) => {
+  slot.addEventListener("click", () => {
+    if (index < 3) {
+      selectedHotbarSlot = index;
+      updateHotbarSelection();
+    }
+  });
+});
+
+// Close button.
+inventoryCloseButton.addEventListener("click", closeInventory);
+
+// Clicking the dark area outside the inventory closes it.
+inventoryOverlay.addEventListener("click", (event) => {
+  if (event.target === inventoryOverlay) {
+    closeInventory();
+  }
+});
+
+// Initialize the default selection.
+updateHotbarSelection();
+
 /* =========================================
    PLAYER MOVEMENT
 ========================================= */
 
 function updatePlayer(delta) {
-  if (!started || gameOver || won) return;
+  if (!started || gameOver || won || inventoryOpen) return;
 
   const forwardInput =
     keys.KeyW || keys.ArrowUp
