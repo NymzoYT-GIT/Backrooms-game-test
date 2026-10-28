@@ -515,6 +515,14 @@ function updateCamera() {
 }
 
 function movePlayer(dx, dz) {
+  // No Clip: move freely without wall collision.
+  if (adminStates.noClip) {
+    player.x += dx;
+    player.z += dz;
+    return;
+  }
+
+  // Normal movement with collision enabled.
   const playerBody = {
     position: { x: player.x, z: player.z }
   };
