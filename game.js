@@ -1664,11 +1664,13 @@ adminToggleButtons.forEach((button) => {
 
     if (!(setting in adminStates)) return;
 
-    adminStates[setting] = !adminStates[setting];
+adminStates[setting] = !adminStates[setting];
 
-    const enabled = adminStates[setting];
+console.log("Admin states:", adminStates);
 
-    button.textContent = enabled ? "ON" : "OFF";
+const enabled = adminStates[setting];
+
+     button.textContent = enabled ? "ON" : "OFF";
     button.setAttribute("aria-pressed", String(enabled));
   });
 });
