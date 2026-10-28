@@ -46,6 +46,12 @@ const inventorySlots = document.querySelectorAll(".inventory-slot");
 const inventoryOverlay = document.getElementById("inventory-overlay");
 const inventoryCloseButton = document.getElementById("inventory-close");
 
+const adminLevel1Overlay = document.getElementById("admin-level-1-overlay");
+const adminLevel1CloseButton = document.getElementById("admin-level-1-close");
+const adminToggleButtons = document.querySelectorAll(".admin-toggle");
+
+let adminPanelOpen = false;
+
 let maze = [];
 let walls = [];
 let monster = null;
@@ -1436,9 +1442,16 @@ function onPointerLockChange() {
 }
 
 function onMouseMove(event) {
-  if (!started || !pointerLocked || gameOver || won || inventoryOpen) {
-    return;
-  }
+if (
+  !started ||
+  !pointerLocked ||
+  gameOver ||
+  won ||
+  inventoryOpen ||
+  adminPanelOpen
+) {
+  return;
+}
 
   const sensitivity = 0.002;
 
@@ -1458,8 +1471,23 @@ function onKeyDown(event) {
   keys[event.code] = true;
   keys[event.key] = true;
 
+  // Toggle Admin Level 1 with /
+  if (event.code === "Slash") {
+    event.preventDefault();
+
+    if (event.repeat) return;
+
+    toggleAdminLevel1Panel();
+    return;
+  }
+
   if (event.code === "Escape" && inventoryOpen) {
     closeInventory();
+    return;
+  }
+
+  if (event.code === "Escape" && adminPanelOpen) {
+    closeAdminLevel1Panel();
     return;
   }
 
@@ -1472,9 +1500,14 @@ function onKeyDown(event) {
     interact();
   }
 
-if (event.code === "AltLeft" && started && !gameOver && !won) {
-  toggleInventory();
-}
+  if (
+    event.code === "AltLeft" &&
+    started &&
+    !gameOver &&
+    !won
+  ) {
+    toggleInventory();
+  }
 
   if (
     event.code.startsWith("Digit") &&
@@ -1538,6 +1571,51 @@ function closeInventory() {
   }
 }
 
+function toggleAdminLevel1Panel() {
+  if (!started || gameOver || won) return;
+
+  if (adminPanelOpen) {
+    closeAdminLevel1Panel();
+    return;
+  }
+
+  // Close the inventory first if it is open.
+  if (inventoryOpen) {
+    closeInventory();
+  }
+
+  adminPanelOpen = true;
+
+  if (adminLevel1Overlay) {
+    adminLevel1Overlay.classList.remove("hidden");
+    adminLevel1Overlay.style.display = "flex";
+  }
+
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+}
+
+function closeAdminLevel1Panel() {
+  if (!adminPanelOpen) return;
+
+  adminPanelOpen = false;
+
+  if (adminLevel1Overlay) {
+    adminLevel1Overlay.classList.add("hidden");
+    adminLevel1Overlay.style.display = "none";
+  }
+
+  if (
+    started &&
+    !gameOver &&
+    !won &&
+    renderer?.domElement.requestPointerLock
+  ) {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
 function selectHotbarSlot(index) {
   if (index < 0 || index >= hotbarSlots.length) return;
 
@@ -1560,6 +1638,21 @@ if (inventoryOverlay) {
   inventoryOverlay.addEventListener("click", event => {
     if (event.target === inventoryOverlay) {
       closeInventory();
+    }
+  });
+}
+
+if (adminLevel1CloseButton) {
+  adminLevel1CloseButton.addEventListener(
+    "click",
+    closeAdminLevel1Panel
+  );
+}
+
+if (adminLevel1Overlay) {
+  adminLevel1Overlay.addEventListener("click", event => {
+    if (event.target === adminLevel1Overlay) {
+      closeAdminLevel1Panel();
     }
   });
 }
