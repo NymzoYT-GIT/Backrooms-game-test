@@ -189,6 +189,58 @@
     </div>
   </div>
 </div>
+
+<!-- ADMIN LEVEL 2 COMMAND CONSOLE -->
+<div id="admin-level-2-overlay" class="inventory-overlay hidden">
+  <div class="inventory-window admin-console-window">
+    <div class="inventory-header">
+      <div>
+        <div class="inventory-eyebrow">RESTRICTED ACCESS</div>
+        <h2>ADMIN CONSOLE</h2>
+      </div>
+      <button
+        id="admin-level-2-close"
+        class="inventory-close"
+        type="button"
+        aria-label="Close admin console"
+      >×</button>
+    </div>
+
+    <div class="inventory-divider"></div>
+
+    <div
+      id="admin-console-output"
+      class="admin-console-output"
+      role="log"
+      aria-live="polite"
+    >
+      <div class="console-line console-info">
+        [INFO] Admin console initialized.
+      </div>
+      <div class="console-line console-info">
+        [INFO] Type /HELP to view available commands.
+      </div>
+    </div>
+
+    <form id="admin-console-form" class="admin-console-form">
+      <label for="admin-console-input" class="console-prompt">&gt;</label>
+      <input
+        id="admin-console-input"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Enter command..."
+        aria-label="Admin command"
+      >
+      <button type="submit" class="console-execute">EXECUTE</button>
+    </form>
+
+    <div class="inventory-footer">
+      <span>PRESS <kbd>\</kbd> TO CLOSE</span>
+      <span>ADMIN LEVEL 2</span>
+    </div>
+  </div>
+</div>
   
 <!-- PERMANENT THREE-SLOT HOTBAR -->
 <div id="hotbar" class="hotbar">
