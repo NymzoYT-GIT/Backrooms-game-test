@@ -1206,10 +1206,13 @@ function updateMonsterAI(delta) {
 
   monsterDistance = distanceToPlayer;
 
-  if (distanceToPlayer <= MONSTER_AI.catchDistance) {
-    endGame(false);
-    return;
-  }
+if (
+  !adminStates.godMode &&
+  distanceToPlayer <= MONSTER_AI.catchDistance
+) {
+  endGame(false);
+  return;
+}
 
   const seesPlayer = canMonsterSeePlayer();
 
