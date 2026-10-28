@@ -209,11 +209,13 @@ function loadTexture(path, repeatX = 1, repeatY = 1) {
 ========================================= */
 
 function generateMaze() {
+  // Start with every cell blocked.
   maze = Array.from(
     { length: GRID_SIZE },
     () => Array(GRID_SIZE).fill(1)
   );
 
+  // Carve a broad, connected maze using two-cell steps.
   const stack = [{ x: 1, z: 1 }];
   maze[1][1] = 0;
 
@@ -251,6 +253,7 @@ function generateMaze() {
     const nx = current.x + direction.x;
     const nz = current.z + direction.z;
 
+    // Open the wall between the current cell and the next cell.
     maze[current.z + direction.z / 2][
       current.x + direction.x / 2
     ] = 0;
@@ -259,12 +262,47 @@ function generateMaze() {
     stack.push({ x: nx, z: nz });
   }
 
+  // Open up many wall cells to create larger interconnected spaces.
+  // Keep the outer boundary intact.
+  for (let z = 2; z < GRID_SIZE - 2; z++) {
+    for (let x = 2; x < GRID_SIZE - 2; x++) {
+      if (maze[z][x] === 1 && Math.random() < 0.38) {
+        maze[z][x] = 0;
+      }
+    }
+  }
+
+  // Create several larger open areas.
+  const openRooms = [
+    { x: 4, z: 4, width: 5, depth: 5 },
+    { x: 18, z: 4, width: 6, depth: 5 },
+    { x: 5, z: 17, width: 6, depth: 6 },
+    { x: 17, z: 17, width: 6, depth: 6 }
+  ];
+
+  for (const room of openRooms) {
+    for (let z = room.z; z < room.z + room.depth; z++) {
+      for (let x = room.x; x < room.x + room.width; x++) {
+        if (
+          x > 0 &&
+          z > 0 &&
+          x < GRID_SIZE - 1 &&
+          z < GRID_SIZE - 1
+        ) {
+          maze[z][x] = 0;
+        }
+      }
+    }
+  }
+
+  // Keep the exit area open.
   for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
     for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
       maze[z][x] = 0;
     }
   }
 
+  // Connect the exit area to the maze.
   for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
     maze[GRID_SIZE - 3][x] = 0;
   }
