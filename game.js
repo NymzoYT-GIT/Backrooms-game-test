@@ -311,7 +311,6 @@ function generateMaze() {
 /* =========================================
    BUILD THE WORLD
 ========================================= */
-
 function buildWorld() {
   generateMaze();
   walls = [];
@@ -323,36 +322,39 @@ function buildWorld() {
   const floorTexture = loadTexture(textures.floor, GRID_SIZE, GRID_SIZE);
   const roofTexture = loadTexture(textures.roof, GRID_SIZE, GRID_SIZE);
 
+  // WALL MATERIAL
   const wallMaterial = new THREE.MeshStandardMaterial({
     map: wallTexture,
-    color: 0xc4b66d,
-    roughness: 0.96,
-    transparent: false,
-    opacity: 1,
-    depthWrite: true
+    color: 0xc9bd7d,
+    roughness: 0.96
   });
 
+  // FLOOR MATERIAL
   const floorMaterial = new THREE.MeshStandardMaterial({
     map: floorTexture,
-    color: 0xaaa18a,
+    color: 0xb6ad94,
     roughness: 1
   });
 
+  // CEILING MATERIAL
   const roofMaterial = new THREE.MeshStandardMaterial({
     map: roofTexture,
-    color: 0xbab38c,
+    color: 0xc9c19a,
     roughness: 1,
     side: THREE.DoubleSide
   });
 
+  // FLOOR
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(worldWidth, worldWidth),
     floorMaterial
   );
 
   floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
   scene.add(floor);
 
+  // CEILING
   const ceiling = new THREE.Mesh(
     new THREE.PlaneGeometry(worldWidth, worldWidth),
     roofMaterial
@@ -362,17 +364,54 @@ function buildWorld() {
   ceiling.position.y = WALL_HEIGHT;
   scene.add(ceiling);
 
+  // FLUORESCENT LIGHT PANELS
+  // One visible panel per grid unit.
+  const lightPanelGeometry = new THREE.PlaneGeometry(
+    CELL * 0.65,
+    CELL * 0.42
+  );
+
+  const lightPanelMaterial = new THREE.MeshBasicMaterial({
+    color: 0xfff4cf,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+
+  for (let z = 0; z < GRID_SIZE; z++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const lightPanel = new THREE.Mesh(
+        lightPanelGeometry,
+        lightPanelMaterial
+      );
+
+      lightPanel.rotation.x = Math.PI / 2;
+
+      lightPanel.position.set(
+        x * CELL - offset + CELL / 2,
+        WALL_HEIGHT - 0.035,
+        z * CELL - offset + CELL / 2
+      );
+
+      scene.add(lightPanel);
+    }
+  }
+
+  // WALL GEOMETRY
   const wallGeometry = new THREE.BoxGeometry(
     CELL,
     WALL_HEIGHT,
     CELL
   );
 
+  // BUILD WALLS FROM THE GENERATED MAZE
   for (let z = 0; z < GRID_SIZE; z++) {
     for (let x = 0; x < GRID_SIZE; x++) {
       if (maze[z][x] !== 1) continue;
 
-      const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+      const wall = new THREE.Mesh(
+        wallGeometry,
+        wallMaterial
+      );
 
       wall.position.set(
         x * CELL - offset + CELL / 2,
@@ -388,6 +427,7 @@ function buildWorld() {
     }
   }
 
+  // EXIT
   const exit = new THREE.Mesh(
     new THREE.BoxGeometry(2.2, 3.2, 0.3),
     new THREE.MeshStandardMaterial({
@@ -402,7 +442,12 @@ function buildWorld() {
     GRID_SIZE - 2
   );
 
-  exit.position.set(exitPosition.x, 1.6, exitPosition.z);
+  exit.position.set(
+    exitPosition.x,
+    1.6,
+    exitPosition.z
+  );
+
   scene.add(exit);
   scene.userData.exit = exit;
 }
