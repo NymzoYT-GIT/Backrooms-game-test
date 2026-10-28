@@ -1492,6 +1492,16 @@ function onKeyDown(event) {
   keys[event.code] = true;
   keys[event.key] = true;
 
+   // Toggle Admin Level 2 console with backslash.
+if (event.code === "Backslash") {
+  event.preventDefault();
+
+  if (event.repeat) return;
+
+  toggleAdminLevel2Console();
+  return;
+}
+
   // Toggle Admin Level 1 with /
   if (event.code === "Slash") {
     event.preventDefault();
@@ -1512,6 +1522,21 @@ function onKeyDown(event) {
     return;
   }
 
+if (adminLevel2CloseButton) {
+  adminLevel2CloseButton.addEventListener(
+    "click",
+    closeAdminLevel2Console
+  );
+}
+
+if (adminLevel2Overlay) {
+  adminLevel2Overlay.addEventListener("click", (event) => {
+    if (event.target === adminLevel2Overlay) {
+      closeAdminLevel2Console();
+    }
+  });
+}
+   
   if (
     event.code === "KeyE" &&
     started &&
@@ -1625,6 +1650,60 @@ function closeAdminLevel1Panel() {
   if (adminLevel1Overlay) {
     adminLevel1Overlay.classList.add("hidden");
     adminLevel1Overlay.style.display = "none";
+  }
+
+  if (
+    started &&
+    !gameOver &&
+    !won &&
+    renderer?.domElement.requestPointerLock
+  ) {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+function toggleAdminLevel2Console() {
+  if (!started || gameOver || won) return;
+
+  if (adminConsoleOpen) {
+    closeAdminLevel2Console();
+    return;
+  }
+
+  // Close other panels first.
+  if (inventoryOpen) {
+    closeInventory();
+  }
+
+  if (adminPanelOpen) {
+    closeAdminLevel1Panel();
+  }
+
+  adminConsoleOpen = true;
+
+  if (adminLevel2Overlay) {
+    adminLevel2Overlay.classList.remove("hidden");
+    adminLevel2Overlay.style.display = "flex";
+  }
+
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+
+  // Focus the command input.
+  if (adminConsoleInput) {
+    adminConsoleInput.focus();
+  }
+}
+
+function closeAdminLevel2Console() {
+  if (!adminConsoleOpen) return;
+
+  adminConsoleOpen = false;
+
+  if (adminLevel2Overlay) {
+    adminLevel2Overlay.classList.add("hidden");
+    adminLevel2Overlay.style.display = "none";
   }
 
   if (
