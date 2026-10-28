@@ -52,6 +52,16 @@ const adminToggleButtons = document.querySelectorAll(".admin-toggle");
 
 let adminPanelOpen = false;
 
+const adminLevel2Overlay = document.getElementById("admin-level-2-overlay");
+const adminLevel2CloseButton = document.getElementById("admin-level-2-close");
+const adminConsoleOutput = document.getElementById("admin-console-output");
+const adminConsoleForm = document.getElementById("admin-console-form");
+const adminConsoleInput = document.getElementById("admin-console-input");
+
+let adminConsoleOpen = false;
+let adminCommandHistory = [];
+let adminHistoryIndex = 0;
+
 let maze = [];
 let walls = [];
 let monster = null;
