@@ -1649,6 +1649,27 @@ if (adminLevel1CloseButton) {
   );
 }
 
+const adminStates = {
+  godMode: false,
+  noClip: false,
+  unlimitedFlashlight: false
+};
+
+adminToggleButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const setting = button.dataset.adminToggle;
+
+    if (!(setting in adminStates)) return;
+
+    adminStates[setting] = !adminStates[setting];
+
+    const enabled = adminStates[setting];
+
+    button.textContent = enabled ? "ON" : "OFF";
+    button.setAttribute("aria-pressed", String(enabled));
+  });
+});
+
 if (adminLevel1Overlay) {
   adminLevel1Overlay.addEventListener("click", event => {
     if (event.target === adminLevel1Overlay) {
