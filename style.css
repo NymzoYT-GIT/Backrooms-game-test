@@ -803,3 +803,116 @@ h1 {
     font-size: 10px;
   }
 }
+/* ADMIN LEVEL 2 COMMAND CONSOLE */
+.admin-console-window {
+  width: min(720px, 100%);
+}
+
+.admin-console-output {
+  height: 280px;
+  overflow-y: auto;
+  padding: 14px;
+  margin: 16px 0;
+  background: rgba(8, 7, 4, 0.55);
+  border: 1px solid var(--horror-border);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  scrollbar-color: var(--horror-muted) rgba(10, 9, 5, 0.5);
+  scrollbar-width: thin;
+}
+
+.console-line {
+  white-space: pre-wrap;
+  margin-bottom: 4px;
+}
+
+.console-info {
+  color: var(--horror-beige);
+}
+
+.console-success {
+  color: #a6b88a;
+}
+
+.console-error {
+  color: #c77d70;
+}
+
+.console-warning {
+  color: #c5ae65;
+}
+
+.admin-console-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(15, 14, 8, 0.45);
+  border: 1px solid var(--horror-border);
+}
+
+.console-prompt {
+  color: var(--horror-yellow);
+  font-family: "Courier New", monospace;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+#admin-console-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--horror-beige);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+}
+
+#admin-console-input::placeholder {
+  color: var(--horror-muted);
+  opacity: 0.75;
+}
+
+.console-execute {
+  padding: 9px 12px;
+  background: rgba(182, 166, 107, 0.12);
+  border: 1px solid var(--horror-border);
+  border-radius: 2px;
+  color: var(--horror-beige);
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.console-execute:hover {
+  background: rgba(182, 166, 107, 0.22);
+  border-color: rgba(210, 194, 132, 0.6);
+}
+
+.console-execute:focus-visible,
+#admin-console-input:focus-visible {
+  outline: 1px solid var(--horror-beige);
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .admin-console-output {
+    height: 220px;
+    font-size: 11px;
+  }
+
+  .admin-console-form {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .console-execute {
+    padding: 8px;
+    font-size: 9px;
+  }
+}
