@@ -49,6 +49,7 @@ const inventoryCloseButton = document.getElementById("inventory-close");
 const adminLevel1Overlay = document.getElementById("admin-level-1-overlay");
 const adminLevel1CloseButton = document.getElementById("admin-level-1-close");
 const adminToggleButtons = document.querySelectorAll(".admin-toggle");
+console.log("Admin toggle buttons found:", adminToggleButtons.length);
 
 let adminPanelOpen = false;
 
