@@ -2039,6 +2039,31 @@ if (wantsSprint && player.stamina > 0) {
   player.stamina = Math.min(100, player.stamina + 16 * delta);
 }
 
+// Update stamina HUD indicator.
+const staminaFill = document.getElementById("stamina-fill");
+const staminaValue = document.getElementById("stamina-value");
+
+const staminaPercent = Math.max(
+  0,
+  Math.min(100, player.stamina)
+);
+
+if (staminaFill) {
+  staminaFill.style.width = `${staminaPercent}%`;
+
+  if (staminaPercent <= 25) {
+    staminaFill.style.backgroundColor = "#c94b4b";
+  } else if (staminaPercent <= 50) {
+    staminaFill.style.backgroundColor = "#c9a34b";
+  } else {
+    staminaFill.style.backgroundColor = "#b9c986";
+  }
+}
+
+if (staminaValue) {
+  staminaValue.textContent = `${Math.round(staminaPercent)}%`;
+}
+   
   const sinYaw = Math.sin(player.yaw);
   const cosYaw = Math.cos(player.yaw);
 
