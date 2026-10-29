@@ -280,13 +280,14 @@ function generateMaze() {
     { x: 17, z: 17, width: 6, depth: 6 }
   ];
 
-// Designated doorway locations for future door objects.
-// Each doorway occupies one complete maze cell.
+// Designated doorway locations and their orientations.
+// "x" means the doorway faces along the X axis.
+// "z" means the doorway faces along the Z axis.
 const doorways = [
-  { x: 8, z: 4 },
-  { x: 20, z: 9 },
-  { x: 8, z: 19 },
-  { x: 20, z: 20 }
+  { x: 8, z: 4, direction: "x" },
+  { x: 20, z: 9, direction: "z" },
+  { x: 8, z: 19, direction: "x" },
+  { x: 20, z: 20, direction: "z" }
 ];
 
 // Open the designated doorway cells in the maze grid.
