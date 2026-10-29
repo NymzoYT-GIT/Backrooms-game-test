@@ -288,6 +288,11 @@ const doorways = [
   { x: 8, z: 19 },
   { x: 20, z: 20 }
 ];
+
+// Open the designated doorway cells in the maze grid.
+for (const doorway of doorways) {
+  maze[doorway.z][doorway.x] = 0;
+}
    
   for (const room of openRooms) {
     for (let z = room.z; z < room.z + room.depth; z++) {
@@ -304,6 +309,11 @@ const doorways = [
     }
   }
 
+// Open the designated doorway cells in the maze grid.
+for (const doorway of doorways) {
+  maze[doorway.z][doorway.x] = 0;
+}
+   
   // Keep the exit area open.
   for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
     for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
