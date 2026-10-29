@@ -215,7 +215,7 @@ function generateMaze() {
     () => Array(GRID_SIZE).fill(1)
   );
 
-  // Carve a broad, connected maze using two-cell steps.
+  // Generate a connected base maze.
   const stack = [{ x: 1, z: 1 }];
   maze[1][1] = 0;
 
@@ -253,7 +253,7 @@ function generateMaze() {
     const nx = current.x + direction.x;
     const nz = current.z + direction.z;
 
-    // Open the wall between the current cell and the next cell.
+    // Open the wall between the current and next cells.
     maze[current.z + direction.z / 2][
       current.x + direction.x / 2
     ] = 0;
@@ -262,8 +262,8 @@ function generateMaze() {
     stack.push({ x: nx, z: nz });
   }
 
-  // Open up many wall cells to create larger interconnected spaces.
-  // Keep the outer boundary intact.
+  // Open some interior walls to create interconnected spaces.
+  // Preserve the outer boundary.
   for (let z = 2; z < GRID_SIZE - 2; z++) {
     for (let x = 2; x < GRID_SIZE - 2; x++) {
       if (maze[z][x] === 1 && Math.random() < 0.38) {
@@ -272,7 +272,7 @@ function generateMaze() {
     }
   }
 
-  // Create several larger open areas.
+  // Create several larger open rooms.
   const openRooms = [
     { x: 4, z: 4, width: 5, depth: 5 },
     { x: 18, z: 4, width: 6, depth: 5 },
@@ -302,153 +302,194 @@ function generateMaze() {
     }
   }
 
-  // Connect the exit area to the maze.
-  for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
-    maze[GRID_SIZE - 3][x] = 0;
-  }
-}
-
-/* =========================================
-   BUILD THE WORLD
-========================================= */
-function generateMaze() {
-  // Start with a completely filled grid.
-  maze = Array.from(
-    { length: GRID_SIZE },
-    () => Array(GRID_SIZE).fill(1)
-  );
-
-  // Generate the basic maze.
-  const stack = [{ x: 1, z: 1 }];
-  maze[1][1] = 0;
-
-  const directions = [
-    { x: 0, z: -2 },
-    { x: 2, z: 0 },
-    { x: 0, z: 2 },
-    { x: -2, z: 0 }
-  ];
-
-  while (stack.length > 0) {
-    const current = stack[stack.length - 1];
-
-    const options = directions.filter(direction => {
-      const nx = current.x + direction.x;
-      const nz = current.z + direction.z;
-
-      return (
-        nx > 0 &&
-        nz > 0 &&
-        nx < GRID_SIZE - 1 &&
-        nz < GRID_SIZE - 1 &&
-        maze[nz][nx] === 1
-      );
-    });
-
-    if (options.length === 0) {
-      stack.pop();
-      continue;
-    }
-
-    const direction =
-      options[Math.floor(Math.random() * options.length)];
-
-    const nx = current.x + direction.x;
-    const nz = current.z + direction.z;
-
-    // Open the cell between the current cell and the next cell.
-    maze[current.z + direction.z / 2][
-      current.x + direction.x / 2
-    ] = 0;
-
-    // Open the next cell.
-    maze[nz][nx] = 0;
-
-    stack.push({ x: nx, z: nz });
-  }
-
-  // Open up more of the interior to create a more spacious layout.
-  for (let z = 1; z < GRID_SIZE - 1; z++) {
-    for (let x = 1; x < GRID_SIZE - 1; x++) {
-      if (
-        maze[z][x] === 1 &&
-        Math.random() < 0.38
-      ) {
-        maze[z][x] = 0;
-      }
-    }
-  }
-
-  // Create several larger open rooms.
-  const rooms = [
-    { x: 3, z: 3, width: 5, depth: 5 },
-    { x: 12, z: 4, width: 6, depth: 5 },
-    { x: 5, z: 14, width: 6, depth: 6 },
-    { x: 17, z: 17, width: 7, depth: 6 }
-  ];
-
-  for (const room of rooms) {
-    for (let z = room.z; z < room.z + room.depth; z++) {
-      for (let x = room.x; x < room.x + room.width; x++) {
-        if (
-          x > 0 &&
-          z > 0 &&
-          x < GRID_SIZE - 1 &&
-          z < GRID_SIZE - 1
-        ) {
-          maze[z][x] = 0;
-        }
-      }
-    }
-  }
-
-  // Keep the exit area open and connected to nearby spaces.
-  for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
-    for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
-      maze[z][x] = 0;
-    }
-  }
-
-  // Open a path toward the exit.
+  // Connect the exit area to the rest of the map.
   for (let x = GRID_SIZE - 7; x < GRID_SIZE - 1; x++) {
     maze[GRID_SIZE - 3][x] = 0;
   }
 
-  // Add a small number of extra openings through existing walls.
-  // These can become doorways later.
+  // Create a few extra openings through remaining walls.
+  // These are full-height openings for future doors.
   const doorOpeningCount = 4;
   let openingsCreated = 0;
   let attempts = 0;
 
-  while (openingsCreated < doorOpeningCount && attempts < 200) {
+  while (openingsCreated < doorOpeningCount && attempts < 300) {
     attempts++;
 
-    const x = 2 + Math.floor(
-      Math.random() * (GRID_SIZE - 4)
-    );
+    const x =
+      2 + Math.floor(Math.random() * (GRID_SIZE - 4));
 
-    const z = 2 + Math.floor(
-      Math.random() * (GRID_SIZE - 4)
-    );
+    const z =
+      2 + Math.floor(Math.random() * (GRID_SIZE - 4));
 
-    // Only consider cells that still contain a wall.
     if (maze[z][x] !== 1) continue;
 
-    // Require an open space on both sides of the wall.
-    const horizontalDoor =
+    const horizontalOpening =
       maze[z][x - 1] === 0 &&
       maze[z][x + 1] === 0;
 
-    const verticalDoor =
+    const verticalOpening =
       maze[z - 1][x] === 0 &&
       maze[z + 1][x] === 0;
 
-    if (!horizontalDoor && !verticalDoor) continue;
+    if (!horizontalOpening && !verticalOpening) continue;
 
-    // Remove the wall to create the opening.
     maze[z][x] = 0;
     openingsCreated++;
   }
+}
+
+
+/* =========================================
+   BUILD THE WORLD
+========================================= */
+
+function buildWorld() {
+  generateMaze();
+  walls = [];
+
+  const worldWidth = GRID_SIZE * CELL;
+  const offset = worldWidth / 2;
+
+  const wallTexture = loadTexture(textures.wall, 2, 1);
+  const floorTexture = loadTexture(
+    textures.floor,
+    GRID_SIZE,
+    GRID_SIZE
+  );
+  const roofTexture = loadTexture(
+    textures.roof,
+    GRID_SIZE,
+    GRID_SIZE
+  );
+
+  // Wall material.
+  const wallMaterial = new THREE.MeshStandardMaterial({
+    map: wallTexture,
+    color: 0xc9bd7d,
+    roughness: 0.96
+  });
+
+  // Floor material.
+  const floorMaterial = new THREE.MeshStandardMaterial({
+    map: floorTexture,
+    color: 0xb6ad94,
+    roughness: 1
+  });
+
+  // Ceiling material.
+  const roofMaterial = new THREE.MeshStandardMaterial({
+    map: roofTexture,
+    color: 0xc9c19a,
+    roughness: 1,
+    side: THREE.DoubleSide
+  });
+
+  // Floor.
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldWidth, worldWidth),
+    floorMaterial
+  );
+
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
+  scene.add(floor);
+
+  // Ceiling.
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldWidth, worldWidth),
+    roofMaterial
+  );
+
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = WALL_HEIGHT;
+  scene.add(ceiling);
+
+  // Fluorescent ceiling panels: one per grid cell.
+  const lightPanelGeometry = new THREE.PlaneGeometry(
+    CELL * 0.65,
+    CELL * 0.42
+  );
+
+  const lightPanelMaterial = new THREE.MeshBasicMaterial({
+    color: 0xfff4cf,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+
+  for (let z = 0; z < GRID_SIZE; z++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const lightPanel = new THREE.Mesh(
+        lightPanelGeometry,
+        lightPanelMaterial
+      );
+
+      lightPanel.rotation.x = Math.PI / 2;
+
+      lightPanel.position.set(
+        x * CELL - offset + CELL / 2,
+        WALL_HEIGHT - 0.035,
+        z * CELL - offset + CELL / 2
+      );
+
+      scene.add(lightPanel);
+    }
+  }
+
+  // Wall geometry. Keep it aligned with the collision grid.
+  const wallGeometry = new THREE.BoxGeometry(
+    CELL,
+    WALL_HEIGHT,
+    CELL
+  );
+
+  // Build walls only in blocked grid cells.
+  for (let z = 0; z < GRID_SIZE; z++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      if (maze[z][x] !== 1) continue;
+
+      const wall = new THREE.Mesh(
+        wallGeometry,
+        wallMaterial
+      );
+
+      wall.position.set(
+        x * CELL - offset + CELL / 2,
+        WALL_HEIGHT / 2,
+        z * CELL - offset + CELL / 2
+      );
+
+      wall.userData.gridX = x;
+      wall.userData.gridZ = z;
+
+      scene.add(wall);
+      walls.push(wall);
+    }
+  }
+
+  // Exit.
+  const exit = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2, 3.2, 0.3),
+    new THREE.MeshStandardMaterial({
+      color: 0x45ff9a,
+      emissive: 0x087b32,
+      emissiveIntensity: 2
+    })
+  );
+
+  const exitPosition = gridToWorld(
+    GRID_SIZE - 2,
+    GRID_SIZE - 2
+  );
+
+  exit.position.set(
+    exitPosition.x,
+    1.6,
+    exitPosition.z
+  );
+
+  scene.add(exit);
+  scene.userData.exit = exit;
 }
 
 /* =========================================
