@@ -443,11 +443,12 @@ function buildWorld() {
   }
 
   // Wall geometry. Keep it aligned with the collision grid.
-  const wallGeometry = new THREE.BoxGeometry(
-    CELL,
-    WALL_HEIGHT,
-    CELL
-  );
+// Doorway openings will be handled by the maze grid in the next step.
+const wallGeometry = new THREE.BoxGeometry(
+  CELL,
+  WALL_HEIGHT,
+  CELL
+);
 
   // Build walls only in blocked grid cells.
   for (let z = 0; z < GRID_SIZE; z++) {
