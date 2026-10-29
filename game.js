@@ -280,21 +280,7 @@ function generateMaze() {
     { x: 17, z: 17, width: 6, depth: 6 }
   ];
 
-// Designated doorway locations and their orientations.
-// "x" means the doorway faces along the X axis.
-// "z" means the doorway faces along the Z axis.
-const doorways = [
-  { x: 8, z: 4, direction: "x" },
-  { x: 20, z: 9, direction: "z" },
-  { x: 8, z: 19, direction: "x" },
-  { x: 20, z: 20, direction: "z" }
-];
-
-// Open the designated doorway cells in the maze grid.
-for (const doorway of doorways) {
-  maze[doorway.z][doorway.x] = 0;
-}
-   
+  // Carve out the rooms.
   for (const room of openRooms) {
     for (let z = room.z; z < room.z + room.depth; z++) {
       for (let x = room.x; x < room.x + room.width; x++) {
@@ -310,11 +296,27 @@ for (const doorway of doorways) {
     }
   }
 
-// Open the designated doorway cells in the maze grid.
-for (const doorway of doorways) {
-  maze[doorway.z][doorway.x] = 0;
-}
-   
+  // Designated doorway locations and orientations.
+  // These are open maze cells, not functional doors yet.
+  const doorways = [
+    { x: 8, z: 4, direction: "x" },
+    { x: 20, z: 9, direction: "z" },
+    { x: 8, z: 19, direction: "x" },
+    { x: 20, z: 20, direction: "z" }
+  ];
+
+  // Open the designated doorway cells after carving rooms.
+  for (const doorway of doorways) {
+    if (
+      doorway.x > 0 &&
+      doorway.z > 0 &&
+      doorway.x < GRID_SIZE - 1 &&
+      doorway.z < GRID_SIZE - 1
+    ) {
+      maze[doorway.z][doorway.x] = 0;
+    }
+  }
+
   // Keep the exit area open.
   for (let z = GRID_SIZE - 5; z < GRID_SIZE - 1; z++) {
     for (let x = GRID_SIZE - 5; x < GRID_SIZE - 1; x++) {
@@ -328,7 +330,6 @@ for (const doorway of doorways) {
   }
 
   // Create a few extra openings through remaining walls.
-  // These are full-height openings for future doors.
   const doorOpeningCount = 4;
   let openingsCreated = 0;
   let attempts = 0;
@@ -358,10 +359,7 @@ for (const doorway of doorways) {
     openingsCreated++;
   }
 
-  // TEST OPENING: Immediately beside the starting cell.
-  // Starting cell: (1, 1).
-  // Opening cell:  (2, 1).
-  // Next cell:     (3, 1).
+  // Test opening immediately beside the starting cell.
   maze[1][2] = 0;
 }
 
