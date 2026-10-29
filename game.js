@@ -979,14 +979,6 @@ function findMonsterPath(startX, startZ, goalX, goalZ) {
    MONSTER AI CONFIGURATION
 ========================================= */
 
-const MONSTER_STATE = {
-  PATROL: "PATROL",
-  INVESTIGATE: "INVESTIGATE",
-  CHASE: "CHASE",
-  SEARCH: "SEARCH",
-  RETURN: "RETURN"
-};
-
 const MONSTER_AI = {
   patrolSpeed: 1.8,
   investigateSpeed: 2.4,
