@@ -1357,36 +1357,6 @@ const MONSTER_STATE = {
   RETURN: "RETURN"
 };
 
-const MONSTER_AI = {
-  patrolSpeed: 1.5,
-  investigateSpeed: 2.1,
-  chaseSpeed: 4.2,
-  searchSpeed: 1.8,
-  returnSpeed: 2.0,
-
-  // Forward-facing vision has no maximum distance.
-  sightDistance: Infinity,
-  fieldOfView: Math.PI * 0.36,
-
-  hearingDistance: 10,
-  sprintHearingDistance: 20,
-
-  loseSightTime: 4.5,
-  investigationDuration: 7,
-  searchDuration: 10,
-
-  turnSpeed: 2.6,
-  chaseRepathInterval: 0.35,
-  progressThreshold: 0.015,
-  stuckTimeout: 1.5,
-
-  patrolPauseMin: 1,
-  patrolPauseMax: 3,
-
-  catchDistance: 1.3
-};
-
-
 /* =========================================
    INITIALIZE MONSTER AI
 ========================================= */
