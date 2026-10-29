@@ -337,6 +337,12 @@ function generateMaze() {
     maze[z][x] = 0;
     openingsCreated++;
   }
+
+  // TEST OPENING: Immediately beside the starting cell.
+  // Starting cell: (1, 1).
+  // Opening cell:  (2, 1).
+  // Next cell:     (3, 1).
+  maze[1][2] = 0;
 }
 
 
