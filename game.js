@@ -280,6 +280,15 @@ function generateMaze() {
     { x: 17, z: 17, width: 6, depth: 6 }
   ];
 
+// Designated doorway locations for future door objects.
+// Each doorway occupies one complete maze cell.
+const doorways = [
+  { x: 8, z: 4 },
+  { x: 20, z: 9 },
+  { x: 8, z: 19 },
+  { x: 20, z: 20 }
+];
+   
   for (const room of openRooms) {
     for (let z = room.z; z < room.z + room.depth; z++) {
       for (let x = room.x; x < room.x + room.width; x++) {
