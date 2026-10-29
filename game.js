@@ -998,7 +998,7 @@ function findMonsterPath(startX, startZ, goalX, goalZ) {
 const MONSTER_AI = {
   patrolSpeed: 1.8,
   investigateSpeed: 2.4,
-  chaseSpeed: 4.0,
+  chaseSpeed: 7.3,
   searchSpeed: 2.0,
 
   sightDistance: 16,
