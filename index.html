@@ -42,12 +42,36 @@
     </div>
   </div>
 
-  <div id="hud" class="hidden">
-    <div id="status">LEVEL 1 — THE LOBBY</div>
-    <div id="monster-warning"></div>
-    <div id="crosshair">+</div>
-    <div id="message"></div>
+<div id="hud" class="hidden">
+  <div id="status">LEVEL 1 — THE LOBBY</div>
+
+  <!-- Monster proximity indicator -->
+  <div id="monster-warning"></div>
+
+  <!-- Player stamina indicator -->
+  <div id="stamina-indicator" class="hud-indicator">
+    <div class="indicator-label">STAMINA</div>
+    <div class="indicator-bar">
+      <div id="stamina-fill" class="indicator-fill"></div>
+    </div>
+    <div id="stamina-value">100%</div>
   </div>
+
+  <!-- Player sanity indicator -->
+  <div id="sanity-indicator" class="hud-indicator">
+    <div class="indicator-label">SANITY</div>
+    <div class="indicator-bar">
+      <div id="sanity-fill" class="indicator-fill"></div>
+    </div>
+    <div id="sanity-value">100%</div>
+  </div>
+
+  <!-- Interaction prompt -->
+  <div id="interaction-indicator"></div>
+
+  <div id="crosshair">+</div>
+  <div id="message"></div>
+</div>
 
   <div id="error-screen" class="hidden">
     <h2>THE BACKROOMS FAILED TO LOAD</h2>
