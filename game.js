@@ -2109,6 +2109,121 @@ function animate() {
 }
 
 /* =========================================
+   INPUT HANDLERS
+========================================= */
+
+function onKeyDown(event) {
+  keys[event.code] = true;
+  keys[event.key] = true;
+
+  if (
+    event.code === "Tab" ||
+    event.code === "Space" ||
+    event.code.startsWith("Arrow")
+  ) {
+    event.preventDefault();
+  }
+
+  // Don't trigger gameplay shortcuts while typing commands.
+  if (
+    event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLTextAreaElement
+  ) {
+    return;
+  }
+
+  if (event.repeat) return;
+
+  if (event.code === "Escape") {
+    if (inventoryOpen) {
+      closeInventory();
+    } else if (adminPanelOpen) {
+      closeAdminLevel1Panel();
+    } else if (adminConsoleOpen) {
+      closeAdminLevel2Console();
+    }
+    return;
+  }
+
+  if (!started || gameOver || won) return;
+
+  if (event.code === "KeyE") {
+    interact();
+  }
+
+  if (event.code === "KeyI" || event.code === "Tab") {
+    toggleInventory();
+  }
+
+  if (event.code === "Slash") {
+    event.preventDefault();
+    toggleAdminLevel1Panel();
+  }
+
+  if (event.code === "Backslash") {
+    event.preventDefault();
+    toggleAdminLevel2Console();
+  }
+
+  if (event.code.startsWith("Digit")) {
+    const slot = Number(event.code.slice(5)) - 1;
+    selectHotbarSlot(slot);
+  }
+}
+
+function onKeyUp(event) {
+  keys[event.code] = false;
+  keys[event.key] = false;
+}
+
+function onMouseMove(event) {
+  if (!started || !pointerLocked || gameOver || won) return;
+  if (inventoryOpen || adminPanelOpen || adminConsoleOpen) return;
+
+  const sensitivity = 0.002;
+
+  player.yaw -= event.movementX * sensitivity;
+  player.pitch -= event.movementY * sensitivity;
+
+  player.pitch = THREE.MathUtils.clamp(
+    player.pitch,
+    -Math.PI / 2.2,
+    Math.PI / 2.2
+  );
+
+  updateCamera();
+}
+
+function onPointerLockChange() {
+  pointerLocked =
+    document.pointerLockElement === renderer?.domElement;
+}
+
+function startGame() {
+  if (started || gameOver || won) return;
+
+  started = true;
+
+  if (startScreen) {
+    startScreen.style.display = "none";
+  }
+
+  if (hud) {
+    hud.style.display = "block";
+  }
+
+  initializeAudio();
+
+  if (renderer?.domElement.requestPointerLock) {
+    renderer.domElement.requestPointerLock();
+  }
+
+  if (monster && !monster.userData.state) {
+    initializeMonsterAI();
+  }
+}
+
+/* =========================================
    START THE GAME
 ========================================= */
 
