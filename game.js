@@ -1268,55 +1268,73 @@ function followMonsterPath(delta) {
 
   const data = monster.userData;
 
-  if (!data.path || data.path.length === 0) {
-    return false;
+  let target = null;
+  let speed = MONSTER_AI.patrolSpeed;
+
+  // During a chase, move directly toward the player's
+  // current position instead of following a path.
+  if (data.state === MONSTER_STATE.CHASE) {
+    target = {
+      x: player.x,
+      z: player.z
+    };
+
+    speed = MONSTER_AI.chaseSpeed;
+  } else {
+    // Other AI states continue using pathfinding.
+    if (!data.path || data.path.length === 0) {
+      return false;
+    }
+
+    if (data.pathIndex >= data.path.length) {
+      return false;
+    }
+
+    target = data.path[data.pathIndex];
+
+    switch (data.state) {
+      case MONSTER_STATE.INVESTIGATE:
+        speed = MONSTER_AI.investigateSpeed;
+        break;
+
+      case MONSTER_STATE.SEARCH:
+        speed = MONSTER_AI.searchSpeed;
+        break;
+
+      case MONSTER_STATE.RETURN:
+      case MONSTER_STATE.PATROL:
+        speed = MONSTER_AI.patrolSpeed;
+        break;
+    }
+
+    const waypointDistance = Math.hypot(
+      target.x - monster.position.x,
+      target.z - monster.position.z
+    );
+
+    if (waypointDistance < MONSTER_AI.waypointDistance) {
+      data.pathIndex++;
+
+      if (data.pathIndex >= data.path.length) {
+        data.path = [];
+        data.pathIndex = 0;
+      }
+
+      return false;
+    }
   }
 
-  if (data.pathIndex >= data.path.length) {
-    return false;
-  }
-
-  const target = data.path[data.pathIndex];
-
+  // Calculate movement toward the target.
   const dx = target.x - monster.position.x;
   const dz = target.z - monster.position.z;
   const distance = Math.hypot(dx, dz);
 
-  if (distance < MONSTER_AI.waypointDistance) {
-    data.pathIndex++;
-
-    if (data.pathIndex >= data.path.length) {
-      data.path = [];
-      data.pathIndex = 0;
-      return false;
-    }
-
-    return true;
-  }
-
-  let speed = MONSTER_AI.patrolSpeed;
-
-  switch (data.state) {
-    case MONSTER_STATE.INVESTIGATE:
-      speed = MONSTER_AI.investigateSpeed;
-      break;
-
-    case MONSTER_STATE.CHASE:
-      speed = MONSTER_AI.chaseSpeed;
-      break;
-
-    case MONSTER_STATE.SEARCH:
-      speed = MONSTER_AI.searchSpeed;
-      break;
-
-    case MONSTER_STATE.RETURN:
-      speed = MONSTER_AI.patrolSpeed;
-      break;
-  }
+  if (distance < 0.001) return false;
 
   const moveX = (dx / distance) * speed * delta;
   const moveZ = (dz / distance) * speed * delta;
 
+  // Preserve existing wall collision and sliding.
   const movement = moveEntityWithCollision(
     monster,
     moveX,
@@ -1324,22 +1342,21 @@ function followMonsterPath(delta) {
     MONSTER_RADIUS
   );
 
-  if (movement > 0.001) {
-    const targetYaw = Math.atan2(dx, dz);
-    let angleDifference = targetYaw - monster.rotation.y;
+  // Turn the monster toward its movement target.
+  const targetYaw = Math.atan2(dx, dz);
+  let angleDifference = targetYaw - monster.rotation.y;
 
-    while (angleDifference > Math.PI) {
-      angleDifference -= Math.PI * 2;
-    }
-
-    while (angleDifference < -Math.PI) {
-      angleDifference += Math.PI * 2;
-    }
-
-    monster.rotation.y +=
-      angleDifference *
-      Math.min(1, MONSTER_AI.turnSpeed * delta);
+  while (angleDifference > Math.PI) {
+    angleDifference -= Math.PI * 2;
   }
+
+  while (angleDifference < -Math.PI) {
+    angleDifference += Math.PI * 2;
+  }
+
+  monster.rotation.y +=
+    angleDifference *
+    Math.min(1, MONSTER_AI.turnSpeed * delta);
 
   return movement > 0.001;
 }
