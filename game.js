@@ -109,6 +109,22 @@ const monsterClips = {
    INITIALIZATION
 ========================================= */
 
+function onResize() {
+  if (!camera || !renderer) return;
+
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
+
+  renderer.setPixelRatio(
+    Math.min(window.devicePixelRatio || 1, 1.5)
+  );
+}
+
 function initialize() {
   try {
     if (!container) {
