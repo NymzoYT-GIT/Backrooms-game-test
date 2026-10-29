@@ -18,7 +18,7 @@ const reloadButton = document.getElementById("reload-button");
 
 const CELL = 5;
 const GRID_SIZE = 31;
-const WALL_HEIGHT = 4;
+const WALL_HEIGHT = 6;
 const PLAYER_HEIGHT = 1.7;
 
 const PLAYER_RADIUS = 0.32;
