@@ -1194,17 +1194,16 @@ function setMonsterState(state) {
 function canMonsterSeePlayer() {
   if (!monster || !player || !camera) return false;
 
-  const data = monster.userData;
-
   const monsterPosition = monster.position;
 
   // Direction from the monster toward the player.
   const dx = player.x - monsterPosition.x;
   const dz = player.z - monsterPosition.z;
-
   const distance = Math.hypot(dx, dz);
 
-  // Never detect the player through solid walls.
+  if (distance < 0.001) return true;
+
+  // Cast a ray from the monster toward the player's upper body.
   const origin = new THREE.Vector3(
     monsterPosition.x,
     monsterPosition.y + 1.5,
@@ -1217,63 +1216,47 @@ function canMonsterSeePlayer() {
     player.z
   );
 
-  const direction = target.clone().sub(origin).normalize();
+  const direction = target.clone().sub(origin);
+  const rayDistance = direction.length();
+
+  direction.normalize();
 
   const raycaster = new THREE.Raycaster(
     origin,
     direction,
     0,
-    distance
+    rayDistance
   );
 
+  // Walls block the monster's vision.
   const hits = raycaster.intersectObjects(walls, false);
 
-  const blockedByWall = hits.length > 0;
-
-  if (blockedByWall) return false;
-
-  // Determine which direction the monster is facing.
-  // The model's forward direction may need adjustment depending
-  // on how Lonely_Wanderer.glb was authored.
-  const forward = new THREE.Vector3(0, 0, -1);
-
-  forward.applyQuaternion(monster.quaternion);
-  forward.y = 0;
-  forward.normalize();
-
-  const towardPlayer = new THREE.Vector3(dx, 0, dz);
-
-  if (distance > 0) {
-    towardPlayer.normalize();
+  if (hits.length > 0) {
+    return false;
   }
 
-  const dot = forward.dot(towardPlayer);
+  // Determine the monster's facing direction.
+  const forward = new THREE.Vector3(0, 0, -1);
 
-  // The player must be in front of the monster.
-  // A positive dot product means the player is generally ahead.
-  if (dot <= 0) return false;
-
-  // Visible in front: no maximum detection distance.
-  return true;
-}
-
-function canMonsterHearPlayer() {
-  if (!monster) return false;
-
-  const distance = Math.hypot(
-    player.x - monster.position.x,
-    player.z - monster.position.z
+  monster.getWorldQuaternion(
+    new THREE.Quaternion()
   );
 
-  const sprinting =
-    keys.Shift &&
-    player.stamina > 0;
+  const worldQuaternion = new THREE.Quaternion();
+  monster.getWorldQuaternion(worldQuaternion);
+  forward.applyQuaternion(worldQuaternion);
 
-  const hearingDistance = sprinting
-    ? MONSTER_AI.sprintHearingDistance
-    : MONSTER_AI.hearingDistance;
+  // Ignore vertical rotation.
+  forward.y = 0;
 
-  return distance <= hearingDistance;
+  if (forward.lengthSq() < 0.001) return false;
+
+  forward.normalize();
+
+  const towardPlayer = new THREE.Vector3(dx, 0, dz).normalize();
+
+  // The player must be somewhere in front of the monster.
+  return forward.dot(towardPlayer) > 0;
 }
 
 /* =========================================
