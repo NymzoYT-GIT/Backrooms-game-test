@@ -1184,39 +1184,69 @@ function setMonsterState(state) {
 ========================================= */
 
 function canMonsterSeePlayer() {
-  if (!monster || !camera) return false;
+  if (!monster || !player || !camera) return false;
 
-  const dx = player.x - monster.position.x;
-  const dz = player.z - monster.position.z;
+  const data = monster.userData;
+
+  const monsterPosition = monster.position;
+
+  // Direction from the monster toward the player.
+  const dx = player.x - monsterPosition.x;
+  const dz = player.z - monsterPosition.z;
+
   const distance = Math.hypot(dx, dz);
 
-  if (distance > MONSTER_AI.sightDistance) return false;
+  // Never detect the player through solid walls.
+  const origin = new THREE.Vector3(
+    monsterPosition.x,
+    monsterPosition.y + 1.5,
+    monsterPosition.z
+  );
 
-  const directionX = Math.sin(monster.rotation.y);
-  const directionZ = Math.cos(monster.rotation.y);
+  const target = new THREE.Vector3(
+    player.x,
+    PLAYER_HEIGHT * 0.75,
+    player.z
+  );
 
-  const toPlayerX = dx / Math.max(distance, 0.0001);
-  const toPlayerZ = dz / Math.max(distance, 0.0001);
+  const direction = target.clone().sub(origin).normalize();
 
-  const dot = directionX * toPlayerX + directionZ * toPlayerZ;
-  const angle = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
+  const raycaster = new THREE.Raycaster(
+    origin,
+    direction,
+    0,
+    distance
+  );
 
-  if (angle > MONSTER_AI.sightAngle) return false;
+  const hits = raycaster.intersectObjects(walls, false);
 
-  // Raycast checks whether a wall blocks the view.
-  const origin = monster.position.clone();
-  origin.y = 1.6;
+  const blockedByWall = hits.length > 0;
 
-  const target = new THREE.Vector3(player.x, PLAYER_HEIGHT, player.z);
-  const direction = target.clone().sub(origin);
-  const rayDistance = direction.length();
+  if (blockedByWall) return false;
 
-  direction.normalize();
+  // Determine which direction the monster is facing.
+  // The model's forward direction may need adjustment depending
+  // on how Lonely_Wanderer.glb was authored.
+  const forward = new THREE.Vector3(0, 0, -1);
 
-  const raycaster = new THREE.Raycaster(origin, direction, 0, rayDistance);
-  const intersections = raycaster.intersectObjects(walls, false);
+  forward.applyQuaternion(monster.quaternion);
+  forward.y = 0;
+  forward.normalize();
 
-  return intersections.length === 0;
+  const towardPlayer = new THREE.Vector3(dx, 0, dz);
+
+  if (distance > 0) {
+    towardPlayer.normalize();
+  }
+
+  const dot = forward.dot(towardPlayer);
+
+  // The player must be in front of the monster.
+  // A positive dot product means the player is generally ahead.
+  if (dot <= 0) return false;
+
+  // Visible in front: no maximum detection distance.
+  return true;
 }
 
 function canMonsterHearPlayer() {
@@ -1584,153 +1614,290 @@ if (
 }
 
 /* =========================================
-   PLAYER INPUT
+   MONSTER AI
 ========================================= */
 
-function startGame() {
-  if (started || gameOver || won) return;
+function initializeMonsterAI() {
+  if (!monster) return;
 
-  started = true;
+  monster.userData = {
+    state: MONSTER_STATE.PATROL,
+    stateTimer: 0,
+    path: [],
+    pathIndex: 0,
+    pathGoalX: null,
+    pathGoalZ: null,
+    repathTimer: 0,
+    patrolTargetX: null,
+    patrolTargetZ: null,
+    patrolTurnTimer: 0,
+    lastKnownPlayer: null,
+    investigationTarget: null,
+    lostSightTimer: 0,
+    homeX: monster.position.x,
+    homeZ: monster.position.z,
+    stuckTimer: 0,
+    previousX: monster.position.x,
+    previousZ: monster.position.z
+  };
 
-  if (startScreen) {
-    startScreen.style.display = "none";
-  }
-
-  if (hud) {
-    hud.style.display = "block";
-  }
-
-  initializeAudio();
-
-  if (renderer && renderer.domElement.requestPointerLock) {
-    renderer.domElement.requestPointerLock();
-  }
+  chooseRandomPatrolTarget();
 }
 
-function onPointerLockChange() {
-  pointerLocked =
-    document.pointerLockElement === renderer?.domElement;
-}
+function updateMonsterAI(delta) {
+  if (!monster || !started || gameOver || won) return;
 
-function onMouseMove(event) {
-if (
-  !started ||
-  !pointerLocked ||
-  gameOver ||
-  won ||
-  inventoryOpen ||
-  adminPanelOpen
-) {
-  return;
-}
+  const data = monster.userData;
 
-  const sensitivity = 0.002;
+  if (!data.state) {
+    initializeMonsterAI();
+    return;
+  }
 
-  player.yaw -= event.movementX * sensitivity;
-  player.pitch -= event.movementY * sensitivity;
+  data.stateTimer += delta;
+  data.repathTimer -= delta;
+  data.patrolTurnTimer -= delta;
 
-  player.pitch = THREE.MathUtils.clamp(
-    player.pitch,
-    -Math.PI / 2 + 0.05,
-    Math.PI / 2 - 0.05
+  const distanceToPlayer = Math.hypot(
+    player.x - monster.position.x,
+    player.z - monster.position.z
   );
 
-  updateCamera();
-}
+  monsterDistance = distanceToPlayer;
 
-function onKeyDown(event) {
-  keys[event.code] = true;
-  keys[event.key] = true;
-
-   // Toggle Admin Level 2 console with backslash.
-if (event.code === "Backslash") {
-  event.preventDefault();
-
-  if (event.repeat) return;
-
-  toggleAdminLevel2Console();
-  return;
-}
-
-  // Toggle Admin Level 1 with /
-  if (event.code === "Slash") {
-    event.preventDefault();
-
-    if (event.repeat) return;
-
-    toggleAdminLevel1Panel();
+  // Catch the player only when god mode is disabled.
+  if (
+    !adminStates.godMode &&
+    distanceToPlayer <= MONSTER_AI.catchDistance
+  ) {
+    endGame(false);
     return;
   }
 
-  if (event.code === "Escape" && inventoryOpen) {
-    closeInventory();
-    return;
+  // Player detection.
+  const seesPlayer = canMonsterSeePlayer();
+
+  if (seesPlayer) {
+    data.lastKnownPlayer = {
+      x: player.x,
+      z: player.z
+    };
+
+    data.lostSightTimer = 0;
+
+    if (data.state !== MONSTER_STATE.CHASE) {
+      setMonsterState(MONSTER_STATE.CHASE);
+    }
+  } else if (data.state === MONSTER_STATE.CHASE) {
+    data.lostSightTimer += delta;
+
+    if (data.lostSightTimer >= MONSTER_AI.loseSightTime) {
+      setMonsterState(MONSTER_STATE.SEARCH);
+    }
   }
 
-  if (event.code === "Escape" && adminPanelOpen) {
-    closeAdminLevel1Panel();
-    return;
+  // Investigate sounds when not already chasing or searching.
+  if (
+    data.state !== MONSTER_STATE.CHASE &&
+    data.state !== MONSTER_STATE.SEARCH &&
+    canMonsterHearPlayer()
+  ) {
+    data.investigationTarget = {
+      x: player.x,
+      z: player.z
+    };
+
+    setMonsterState(MONSTER_STATE.INVESTIGATE);
   }
 
-if (adminLevel2CloseButton) {
-  adminLevel2CloseButton.addEventListener(
-    "click",
-    closeAdminLevel2Console
+  switch (data.state) {
+    case MONSTER_STATE.PATROL: {
+      if (
+        data.patrolTurnTimer <= 0 ||
+        !data.path ||
+        data.pathIndex >= data.path.length
+      ) {
+        chooseRandomPatrolTarget();
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.INVESTIGATE: {
+      if (!data.investigationTarget) {
+        setMonsterState(MONSTER_STATE.SEARCH);
+        break;
+      }
+
+      if (data.repathTimer <= 0) {
+        setMonsterDestination(
+          data.investigationTarget.x,
+          data.investigationTarget.z
+        );
+
+        data.repathTimer = MONSTER_AI.chaseRepathInterval;
+      }
+
+      const targetDistance = Math.hypot(
+        monster.position.x - data.investigationTarget.x,
+        monster.position.z - data.investigationTarget.z
+      );
+
+      if (targetDistance < 1.5) {
+        setMonsterState(MONSTER_STATE.SEARCH);
+      } else if (
+        data.stateTimer >= MONSTER_AI.investigationDuration
+      ) {
+        setMonsterState(MONSTER_STATE.RETURN);
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.CHASE: {
+      // Recalculate when the player moves to another grid cell
+      // or the current route is exhausted.
+      if (data.repathTimer <= 0) {
+        const playerGrid = worldToGrid(player.x, player.z);
+
+        const goalChanged =
+          data.pathGoalX !== playerGrid.x ||
+          data.pathGoalZ !== playerGrid.z;
+
+        const pathUnavailable =
+          !data.path ||
+          data.pathIndex >= data.path.length;
+
+        if (goalChanged || pathUnavailable) {
+          setMonsterDestination(player.x, player.z);
+        }
+
+        data.lastKnownPlayer = {
+          x: player.x,
+          z: player.z
+        };
+
+        data.repathTimer = MONSTER_AI.chaseRepathInterval;
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.SEARCH: {
+      if (data.stateTimer >= MONSTER_AI.searchDuration) {
+        setMonsterState(MONSTER_STATE.RETURN);
+        break;
+      }
+
+      if (
+        data.repathTimer <= 0 &&
+        (!data.path || data.pathIndex >= data.path.length)
+      ) {
+        const center = data.lastKnownPlayer || {
+          x: monster.position.x,
+          z: monster.position.z
+        };
+
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 2 + Math.random() * 5;
+
+        setMonsterDestination(
+          center.x + Math.cos(angle) * radius,
+          center.z + Math.sin(angle) * radius
+        );
+
+        data.repathTimer = 1.5;
+      }
+
+      break;
+    }
+
+    case MONSTER_STATE.RETURN: {
+      const homeDistance = Math.hypot(
+        data.homeX - monster.position.x,
+        data.homeZ - monster.position.z
+      );
+
+      if (homeDistance < 1.5) {
+        setMonsterState(MONSTER_STATE.PATROL);
+        break;
+      }
+
+      if (
+        data.repathTimer <= 0 &&
+        (!data.path || data.pathIndex >= data.path.length)
+      ) {
+        setMonsterDestination(data.homeX, data.homeZ);
+        data.repathTimer = 0.8;
+      }
+
+      break;
+    }
+  }
+
+  // Follow the existing collision-aware path movement.
+  const moving = followMonsterPath(delta);
+
+  // Animation selection.
+  if (monsterMixer) {
+    if (data.state === MONSTER_STATE.CHASE && moving) {
+      playMonsterAnimation(monsterClips.run);
+    } else if (moving) {
+      playMonsterAnimation(monsterClips.walk);
+    } else {
+      playMonsterAnimation(monsterClips.idle);
+    }
+  }
+
+  // Detect blocked or stalled movement.
+  const moved = Math.hypot(
+    monster.position.x - data.previousX,
+    monster.position.z - data.previousZ
   );
-}
 
-if (adminLevel2Overlay) {
-  adminLevel2Overlay.addEventListener("click", (event) => {
-    if (event.target === adminLevel2Overlay) {
-      closeAdminLevel2Console();
-    }
-  });
-}
-   
-  if (
-    event.code === "KeyE" &&
-    started &&
-    !gameOver &&
-    !won
-  ) {
-    interact();
+  if (moved < MONSTER_AI.progressThreshold) {
+    data.stuckTimer += delta;
+  } else {
+    data.stuckTimer = 0;
   }
 
-  if (
-    event.code === "AltLeft" &&
-    started &&
-    !gameOver &&
-    !won
-  ) {
-    toggleInventory();
-  }
+  data.previousX = monster.position.x;
+  data.previousZ = monster.position.z;
 
-  if (
-    event.code.startsWith("Digit") &&
-    started &&
-    !gameOver &&
-    !won
-  ) {
-    const slot = Number(event.code.slice(5)) - 1;
+  // Discard a stalled path and force route recalculation.
+  if (data.stuckTimer > MONSTER_AI.stuckTimeout) {
+    data.path = [];
+    data.pathIndex = 0;
+    data.pathGoalX = null;
+    data.pathGoalZ = null;
+    data.repathTimer = 0;
+    data.stuckTimer = 0;
 
-    if (slot >= 0 && slot < hotbarSlots.length) {
-      selectHotbarSlot(slot);
+    if (data.state === MONSTER_STATE.CHASE) {
+      data.lastKnownPlayer = {
+        x: player.x,
+        z: player.z
+      };
     }
   }
-}
 
-function onKeyUp(event) {
-  keys[event.code] = false;
-  keys[event.key] = false;
-}
+  // Monster warning.
+  if (monsterWarning) {
+    monsterWarning.style.opacity =
+      distanceToPlayer < 12 ? "1" : "0";
+  }
 
-function onResize() {
-  if (!camera || !renderer) return;
-
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  // Player status text.
+  if (statusText) {
+    statusText.textContent =
+      data.state === MONSTER_STATE.CHASE
+        ? "DANGER — THE CREATURE IS CHASING YOU"
+        : data.state === MONSTER_STATE.INVESTIGATE
+          ? "Something heard you..."
+          : data.state === MONSTER_STATE.SEARCH
+            ? "The creature is searching..."
+            : "Explore carefully";
+  }
 }
 
 /* =========================================
