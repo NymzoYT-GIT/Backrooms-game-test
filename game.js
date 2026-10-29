@@ -119,15 +119,17 @@ function initialize() {
       throw new Error("Missing start screen or start button. Check index.html.");
     }
 
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x17150e);
-    scene.fog = new THREE.Fog(0x17150e, 8, 38);
+scene = new THREE.Scene();
+scene.background = new THREE.Color(0x17150e);
+
+// Fog disabled for long-distance visibility.
+scene.fog = null;
 
     camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
-      150
+      1000
     );
 
     renderer = new THREE.WebGLRenderer({
