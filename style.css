@@ -1023,3 +1023,22 @@ h1 {
     top: 130px;
   }
 }
+/* Ensure HUD indicators display when the game HUD is visible */
+#hud:not(.hidden) #stamina-indicator,
+#hud:not(.hidden) #sanity-indicator {
+  display: block;
+  visibility: visible;
+  opacity: 1;
+}
+
+#hud:not(.hidden) .indicator-bar {
+  display: block;
+  height: 9px;
+  min-height: 9px;
+  visibility: visible;
+}
+
+#hud:not(.hidden) .indicator-fill {
+  display: block;
+  min-width: 0;
+}
